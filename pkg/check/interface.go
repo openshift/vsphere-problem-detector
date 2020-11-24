@@ -18,15 +18,7 @@ var (
 
 	// DefaultCheks is the list of all checks.
 	DefaultChecks map[string]Check = map[string]Check{
-		/*
-			"CheckDefaultDatastore": CheckDefaultDatastore,
-			"CheckPVs":              CheckPVs,
-			"CheckStorageClasses":   CheckStorageClasses,
-			"CheckFolderList":       CheckFolderList,
-			"CheckNodes":            CheckNodes,
-			"CheckTaskPermissions":  CheckTaskPermissions,
-		*/
-		"Dummy": CheckDummy,
+		"CheckFolderList": CheckFolderList,
 	}
 )
 
