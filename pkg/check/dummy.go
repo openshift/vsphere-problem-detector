@@ -1,14 +1,18 @@
 package check
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/vmware/govmomi/vim25"
-	"k8s.io/legacy-cloud-providers/vsphere"
+	"github.com/vmware/govmomi/vim25/mo"
+	v1 "k8s.io/api/core/v1"
 )
 
-// CheckDummy is a dummy check that always fails to test the operator & its exp. backoff.
-func CheckDummy(ctx context.Context, vmConfig *vsphere.VSphereConfig, vmClient *vim25.Client, kubeClient KubeClient) error {
+// CheckClusterDummy is a dummy check that always fails to test the operator & its exp. backoff.
+func CheckClusterDummy(ctx *CheckContext) error {
+	return fmt.Errorf("Dummy error")
+}
+
+// CheckNodeDummy is a dummy check that always fails to test the operator & its exp. backoff.
+func CheckNodeDummy(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	return fmt.Errorf("Dummy error")
 }
