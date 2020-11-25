@@ -164,16 +164,20 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		res := checkResult{
 			Name: name,
 		}
+		start := time.Now()
 		err := checkFunc(ctx, vmConfig, vmClient, c)
 		if err != nil {
 			res.Result = false
 			res.Message = err.Error()
 			failed = true
+			clusterCheckErrrorMetric.WithLabelValues(name).Inc()
 			klog.V(2).Infof("Check %q failed: %s", name, err)
 		} else {
 			res.Result = true
 			klog.V(42).Infof("Check %q passed", name)
 		}
+		duration := time.Now().Sub(start)
+		clusterCheckMetric.WithLabelValues(name).Observe(duration.Seconds())
 		results = append(results, res)
 	}
 
