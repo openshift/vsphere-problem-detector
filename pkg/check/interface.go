@@ -22,6 +22,9 @@ var (
 		"CheckTaskPermissions":   CheckTaskPermissions,
 		"ClusterInfo":            CollectClusterInfo,
 		"CheckFolderPermissions": CheckFolderPermissions,
+		"CheckDefaultDatastore":  CheckDefaultDatastore,
+		"CheckPVs":               CheckPVs,
+		"CheckStorageClasses":    CheckStorageClasses,
 	}
 	DefaultNodeChecks map[string]NodeCheck = map[string]NodeCheck{
 		"CheckNodeDiskUUID": CheckNodeDiskUUID,
