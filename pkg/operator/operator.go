@@ -201,7 +201,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		nextDelay = defaultBackoff.Cap
 	}
 	c.nextCheck = c.lastCheck.Add(nextDelay)
-	klog.V(4).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
+	klog.V(2).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
 	return nextDelay, nil
 }
 
@@ -212,16 +212,17 @@ func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.
 		res := checkResult{
 			Name: name,
 		}
+		klog.V(4).Infof("%s starting", name)
 		err := checkFunc(checkContext)
 		if err != nil {
 			res.Result = false
 			res.Message = err.Error()
 			errs = append(errs, err)
 			clusterCheckErrrorMetric.WithLabelValues(name).Inc()
-			klog.V(2).Infof("Check %q failed: %s", name, err)
+			klog.V(2).Infof("%s failed: %s", name, err)
 		} else {
 			res.Result = true
-			klog.V(4).Infof("Check %q passed", name)
+			klog.V(2).Infof("%s passed", name)
 		}
 		clusterCheckTotalMetric.WithLabelValues(name).Inc()
 		results = append(results, res)
@@ -250,6 +251,7 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		for name, checkFunc := range c.nodeChecks {
 			var err error
 			if vmErr == nil {
+				klog.V(4).Infof("%s:%s starting ", name, node.Name)
 				err = checkFunc(checkContext, node, vm)
 			} else {
 				// Now use vmErr to mark all checks as failed with the same error
@@ -258,9 +260,9 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 			if err != nil {
 				checkErrors[name] = append(checkErrors[name], fmt.Errorf("%s: %s", node.Name, err))
 				nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
-				klog.V(2).Infof("Node %s: check %q failed: %s", node.Name, name, err)
+				klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
 			} else {
-				klog.V(4).Infof("Node %s: check %q passed", node.Name, name)
+				klog.V(2).Infof("%s:%s passed", name, node.Name)
 			}
 			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
 		}
