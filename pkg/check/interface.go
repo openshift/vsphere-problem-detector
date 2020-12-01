@@ -24,7 +24,7 @@ var (
 		"CheckFolderPermissions": CheckFolderPermissions,
 	}
 	DefaultNodeChecks map[string]NodeCheck = map[string]NodeCheck{
-		"NodeDummy": CheckNodeDummy,
+		"CheckNodeDiskUUID": CheckNodeDiskUUID,
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
