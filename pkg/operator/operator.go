@@ -278,7 +278,7 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		}
 		if len(errs) != 0 {
 			res.Result = false
-			res.Message = errors.NewAggregate(errs).Error()
+			res.Message = check.JoinErrors(errs).Error()
 			allErrors = append(allErrors, errs...)
 		} else {
 			res.Result = true

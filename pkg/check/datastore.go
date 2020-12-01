@@ -11,7 +11,6 @@ import (
 	"github.com/vmware/govmomi/pbm/types"
 	"github.com/vmware/govmomi/view"
 	vim "github.com/vmware/govmomi/vim25/types"
-	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
 
@@ -44,17 +43,19 @@ func CheckStorageClasses(ctx *CheckContext) error {
 			switch strings.ToLower(k) {
 			case dsParameter:
 				if err := checkDataStore(v, infra); err != nil {
+					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
 				}
 			case storagePolicyParameter:
 				if err := checkStoragePolicy(ctx, v, infra); err != nil {
+					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
 				}
 			}
 		}
 	}
-	klog.V(4).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
-	return errors.NewAggregate(errs)
+	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
+	return JoinErrors(errs)
 }
 
 // CheckPVs tests that datastore name in all PVs in the cluster is short enough.
@@ -73,11 +74,12 @@ func CheckPVs(ctx *CheckContext) error {
 		klog.V(4).Infof("Checking PV %s: %s", pv.Name, pv.Spec.VsphereVolume.VolumePath)
 		err := checkVolumeName(pv.Spec.VsphereVolume.VolumePath)
 		if err != nil {
+			klog.V(2).Infof("CheckPVs: %s: %s", pv.Name, err)
 			errs = append(errs, fmt.Errorf("PersistentVolume %s: %s", pv.Name, err))
 		}
 	}
-	klog.V(4).Infof("CheckPVs: checked %d PVs, %d problems found", len(pvs), len(errs))
-	return errors.NewAggregate(errs)
+	klog.V(2).Infof("CheckPVs: checked %d PVs, %d problems found", len(pvs), len(errs))
+	return JoinErrors(errs)
 }
 
 // CheckDefaultDatastore checks that the default data store name in vSphere config file is short enough.
@@ -122,10 +124,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 			errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
 		}
 	}
-	if len(errs) > 0 {
-		return errors.NewAggregate(errs)
-	}
-	return nil
+	return JoinErrors(errs)
 }
 
 // checkStoragePolicy lists all datastores compatible with given policy.
