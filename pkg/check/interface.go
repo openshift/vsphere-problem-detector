@@ -19,8 +19,9 @@ var (
 
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
-		"CheckTaskPermissions": CheckTaskPermissions,
-		"ClusterInfo":  CollectClusterInfo,
+		"CheckTaskPermissions":   CheckTaskPermissions,
+		"ClusterInfo":            CollectClusterInfo,
+		"CheckFolderPermissions": CheckFolderPermissions,
 	}
 	DefaultNodeChecks map[string]NodeCheck = map[string]NodeCheck{
 		"NodeDummy": CheckNodeDummy,
