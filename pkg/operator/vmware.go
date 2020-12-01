@@ -4,13 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
 )
@@ -107,4 +112,41 @@ func (c *vSphereProblemDetectorController) getVSphereConfig(ctx context.Context)
 	klog.V(4).Infof("Got ConfigMap %s/%s with config:\n%s", cloudConfigNamespace, infra.Spec.CloudConfig.Name, cfgString)
 
 	return cfgString, nil
+}
+
+func (c *vSphereProblemDetectorController) getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
+	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
+	defer cancel()
+
+	// Find datastore
+	finder := find.NewFinder(checkContext.VMClient, false)
+	dc, err := finder.Datacenter(tctx, checkContext.VMConfig.Workspace.Datacenter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access Datacenter %s: %s", checkContext.VMConfig.Workspace.Datacenter, err)
+	}
+
+	// Find VM reference in the datastore, by UUID
+	s := object.NewSearchIndex(dc.Client())
+	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
+	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	defer cancel()
+	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
+	}
+	if svm == nil {
+		return nil, fmt.Errorf("unable to find VM by UUID %s", vmUUID)
+	}
+
+	// Find VM properties
+	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
+	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	defer cancel()
+	var o mo.VirtualMachine
+	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load VM %s: %s", node.Name, err)
+	}
+
+	return &o, nil
 }

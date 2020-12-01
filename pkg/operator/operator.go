@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
@@ -28,7 +30,8 @@ type vSphereProblemDetectorController struct {
 	eventRecorder        events.Recorder
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
-	checks map[string]check.Check
+	clusterChecks map[string]check.ClusterCheck
+	nodeChecks    map[string]check.NodeCheck
 
 	lastCheck   time.Time
 	nextCheck   time.Time
@@ -75,7 +78,8 @@ func NewVSphereProblemDetectorController(
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
 		eventRecorder:        eventRecorder.WithComponentSuffix("vSphereProblemDetectorController"),
-		checks:               check.DefaultChecks,
+		clusterChecks:        check.DefaultClusterChecks,
+		nodeChecks:           check.DefaultNodeChecks,
 		backoff:              defaultBackoff,
 	}
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
@@ -133,17 +137,17 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 
 func resultConditionsFn(results []checkResult) v1helpers.UpdateStatusFunc {
 	return func(status *operatorv1.OperatorStatus) error {
-		for _, res := range results {
+		for i := range results {
 			st := operatorapi.ConditionTrue
 			reason := ""
-			if !res.Result {
+			if !results[i].Result {
 				st = operatorapi.ConditionFalse
 				reason = "CheckFailed"
 			}
 			cnd := operatorapi.OperatorCondition{
-				Type:    res.Name + "OK",
+				Type:    results[i].Name + "OK",
 				Status:  st,
-				Message: res.Message,
+				Message: results[i].Message,
 				Reason:  reason,
 			}
 			v1helpers.SetOperatorCondition(&status.Conditions, cnd)
@@ -159,28 +163,35 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	}
 
 	var results []checkResult
-	failed := false
-	for name, checkFunc := range c.checks {
-		res := checkResult{
-			Name: name,
-		}
-		err := checkFunc(ctx, vmConfig, vmClient, c)
-		if err != nil {
-			res.Result = false
-			res.Message = err.Error()
-			failed = true
-			klog.V(2).Infof("Check %q failed: %s", name, err)
-		} else {
-			res.Result = true
-			klog.V(42).Infof("Check %q passed", name)
-		}
-		results = append(results, res)
+	checkContext := &check.CheckContext{
+		Context:    ctx,
+		VMConfig:   vmConfig,
+		VMClient:   vmClient,
+		KubeClient: c,
 	}
 
+	var errs []error
+	clusterResults, err := c.runClusterChecks(checkContext)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if clusterResults != nil {
+		results = append(results, clusterResults...)
+	}
+
+	nodeResults, err := c.runNodeChecks(checkContext)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if nodeResults != nil {
+		results = append(results, nodeResults...)
+	}
+
+	finalErr := errors.NewAggregate(errs)
 	c.lastResults = results
 	c.lastCheck = time.Now()
 	var nextDelay time.Duration
-	if failed {
+	if finalErr != nil {
 		nextDelay = c.backoff.Step()
 	} else {
 		// Reset the backoff on success
@@ -192,4 +203,89 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	c.nextCheck = c.lastCheck.Add(nextDelay)
 	klog.V(4).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
 	return nextDelay, nil
+}
+
+func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.CheckContext) ([]checkResult, error) {
+	var errs []error
+	var results []checkResult
+	for name, checkFunc := range c.clusterChecks {
+		res := checkResult{
+			Name: name,
+		}
+		start := time.Now()
+		err := checkFunc(checkContext)
+		if err != nil {
+			res.Result = false
+			res.Message = err.Error()
+			errs = append(errs, err)
+			clusterCheckErrrorMetric.WithLabelValues(name).Inc()
+			klog.V(2).Infof("Check %q failed: %s", name, err)
+		} else {
+			res.Result = true
+			klog.V(4).Infof("Check %q passed", name)
+		}
+		duration := time.Now().Sub(start)
+		clusterCheckMetric.WithLabelValues(name).Observe(duration.Seconds())
+		results = append(results, res)
+	}
+
+	return results, errors.NewAggregate(errs)
+}
+
+func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.CheckContext) ([]checkResult, error) {
+	nodes, err := c.ListNodes(checkContext.Context)
+	if err != nil {
+		return nil, err
+	}
+
+	// Prepare list of errors of each check
+	checkErrors := make(map[string][]error)
+	for name := range c.nodeChecks {
+		checkErrors[name] = []error{}
+	}
+
+	for i := range nodes {
+		node := &nodes[i]
+		vm, vmErr := c.getVM(checkContext, node)
+		// vmErr will be processed later to make all checks fail
+
+		for name, checkFunc := range c.nodeChecks {
+			start := time.Now()
+			var err error
+			if vmErr == nil {
+				err = checkFunc(checkContext, node, vm)
+			} else {
+				// Now use vmErr to mark all checks as failed with the same error
+				err = vmErr
+			}
+			if err != nil {
+				checkErrors[name] = append(checkErrors[name], fmt.Errorf("%s: %s", node.Name, err))
+				nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
+				klog.V(2).Infof("Node %s: check %q failed: %s", node.Name, name, err)
+			} else {
+				klog.V(4).Infof("Node %s: check %q passed", node.Name, name)
+			}
+			duration := time.Now().Sub(start)
+			nodeCheckMetric.WithLabelValues(name, node.Name).Observe(duration.Seconds())
+		}
+	}
+
+	// Convert the errors to checkResults
+	var results []checkResult
+	var allErrors []error
+	for name := range c.nodeChecks {
+		errs := checkErrors[name]
+		res := checkResult{
+			Name: name,
+		}
+		if len(errs) != 0 {
+			res.Result = false
+			res.Message = errors.NewAggregate(errs).Error()
+			allErrors = append(allErrors, errs...)
+		} else {
+			res.Result = true
+		}
+		results = append(results, res)
+	}
+	return results, errors.NewAggregate(allErrors)
 }
