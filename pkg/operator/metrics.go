@@ -14,11 +14,10 @@ const (
 // For other metrics exposed by this operator, see pkg/check.
 
 var (
-	clusterCheckMetric = metrics.NewHistogramVec(
-		&metrics.HistogramOpts{
-			Name:           "vsphere_cluster_check_duration_seconds",
-			Help:           "vSphere cluster-level check duration",
-			Buckets:        []float64{.1, .25, .5, 1, 2.5, 5, 10, 15, 30, 60, 120, 300, 600},
+	clusterCheckTotalMetric = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Name:           "vsphere_cluster_check_total",
+			Help:           "Number of vSphere cluster-level checks performed by vsphere-problem-detector, including both successes and failures.",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{checkNameLabel},
@@ -33,11 +32,10 @@ var (
 		[]string{checkNameLabel},
 	)
 
-	nodeCheckMetric = metrics.NewHistogramVec(
-		&metrics.HistogramOpts{
-			Name:           "vsphere_node_check_duration_seconds",
-			Help:           "vSphere node-level check duration",
-			Buckets:        []float64{.1, .25, .5, 1, 2.5, 5, 10, 15, 30, 60, 120, 300, 600},
+	nodeCheckTotalMetric = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Name:           "vsphere_node_check_total",
+			Help:           "Number of vSphere node-level checks performed by vsphere-problem-detector, including both successes and failures.",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{checkNameLabel, nodeNameLabel},
@@ -54,8 +52,8 @@ var (
 )
 
 func init() {
-	legacyregistry.MustRegister(clusterCheckMetric)
+	legacyregistry.MustRegister(clusterCheckTotalMetric)
 	legacyregistry.MustRegister(clusterCheckErrrorMetric)
-	legacyregistry.MustRegister(nodeCheckMetric)
+	legacyregistry.MustRegister(nodeCheckTotalMetric)
 	legacyregistry.MustRegister(nodeCheckErrrorMetric)
 }

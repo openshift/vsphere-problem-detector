@@ -212,7 +212,6 @@ func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.
 		res := checkResult{
 			Name: name,
 		}
-		start := time.Now()
 		err := checkFunc(checkContext)
 		if err != nil {
 			res.Result = false
@@ -224,8 +223,7 @@ func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.
 			res.Result = true
 			klog.V(4).Infof("Check %q passed", name)
 		}
-		duration := time.Now().Sub(start)
-		clusterCheckMetric.WithLabelValues(name).Observe(duration.Seconds())
+		clusterCheckTotalMetric.WithLabelValues(name).Inc()
 		results = append(results, res)
 	}
 
@@ -250,7 +248,6 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		// vmErr will be processed later to make all checks fail
 
 		for name, checkFunc := range c.nodeChecks {
-			start := time.Now()
 			var err error
 			if vmErr == nil {
 				err = checkFunc(checkContext, node, vm)
@@ -265,8 +262,7 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 			} else {
 				klog.V(4).Infof("Node %s: check %q passed", node.Name, name)
 			}
-			duration := time.Now().Sub(start)
-			nodeCheckMetric.WithLabelValues(name, node.Name).Observe(duration.Seconds())
+			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
 		}
 	}
 
