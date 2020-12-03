@@ -12,20 +12,19 @@ import (
 
 type OperatorClient struct {
 	Informers operatorclientinformers.SharedInformerFactory
-	Client    operatorconfigclient.ClusterCSIDriversGetter
+	Client    operatorconfigclient.StoragesGetter
 }
 
-// TODO: use custom CRD
 const (
-	globalConfigName = "csi.ovirt.org"
+	globalConfigName = "cluster"
 )
 
 func (c OperatorClient) Informer() cache.SharedIndexInformer {
-	return c.Informers.Operator().V1().ClusterCSIDrivers().Informer()
+	return c.Informers.Operator().V1().Storages().Informer()
 }
 
 func (c OperatorClient) GetOperatorState() (*operatorv1.OperatorSpec, *operatorv1.OperatorStatus, string, error) {
-	instance, err := c.Informers.Operator().V1().ClusterCSIDrivers().Lister().Get(globalConfigName)
+	instance, err := c.Informers.Operator().V1().Storages().Lister().Get(globalConfigName)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -34,7 +33,7 @@ func (c OperatorClient) GetOperatorState() (*operatorv1.OperatorSpec, *operatorv
 }
 
 func (c OperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
-	instance, err := c.Informers.Operator().V1().ClusterCSIDrivers().Lister().Get(globalConfigName)
+	instance, err := c.Informers.Operator().V1().Storages().Lister().Get(globalConfigName)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +41,7 @@ func (c OperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
 }
 
 func (c OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operatorv1.OperatorSpec) (*operatorv1.OperatorSpec, string, error) {
-	original, err := c.Informers.Operator().V1().ClusterCSIDrivers().Lister().Get(globalConfigName)
+	original, err := c.Informers.Operator().V1().Storages().Lister().Get(globalConfigName)
 	if err != nil {
 		return nil, "", err
 	}
@@ -50,7 +49,7 @@ func (c OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operato
 	copy.ResourceVersion = resourceVersion
 	copy.Spec.OperatorSpec = *spec
 
-	ret, err := c.Client.ClusterCSIDrivers().Update(context.TODO(), copy, metav1.UpdateOptions{})
+	ret, err := c.Client.Storages().Update(context.TODO(), copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, "", err
 	}
@@ -59,7 +58,7 @@ func (c OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operato
 }
 
 func (c OperatorClient) UpdateOperatorStatus(resourceVersion string, status *operatorv1.OperatorStatus) (*operatorv1.OperatorStatus, error) {
-	original, err := c.Informers.Operator().V1().ClusterCSIDrivers().Lister().Get(globalConfigName)
+	original, err := c.Informers.Operator().V1().Storages().Lister().Get(globalConfigName)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +66,7 @@ func (c OperatorClient) UpdateOperatorStatus(resourceVersion string, status *ope
 	copy.ResourceVersion = resourceVersion
 	copy.Status.OperatorStatus = *status
 
-	ret, err := c.Client.ClusterCSIDrivers().UpdateStatus(context.TODO(), copy, metav1.UpdateOptions{})
+	ret, err := c.Client.Storages().UpdateStatus(context.TODO(), copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +74,8 @@ func (c OperatorClient) UpdateOperatorStatus(resourceVersion string, status *ope
 	return &ret.Status.OperatorStatus, nil
 }
 
-func (c OperatorClient) GetOperatorInstance() (*operatorv1.ClusterCSIDriver, error) {
-	instance, err := c.Informers.Operator().V1().ClusterCSIDrivers().Lister().Get(globalConfigName)
+func (c OperatorClient) GetOperatorInstance() (*operatorv1.Storage, error) {
+	instance, err := c.Informers.Operator().V1().Storages().Lister().Get(globalConfigName)
 	if err != nil {
 		return nil, err
 	}

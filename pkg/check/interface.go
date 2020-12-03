@@ -19,19 +19,15 @@ var (
 
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
-		/*
-			"CheckDefaultDatastore": CheckDefaultDatastore,
-			"CheckPVs":              CheckPVs,
-			"CheckStorageClasses":   CheckStorageClasses,
-			"CheckFolderList":       CheckFolderList,
-			"CheckNodes":            CheckNodes,
-			"CheckTaskPermissions":  CheckTaskPermissions,
-		*/
-		"ClusterDummy": CheckClusterDummy,
-		"ClusterInfo":  CollectClusterInfo,
+		"CheckTaskPermissions":   CheckTaskPermissions,
+		"ClusterInfo":            CollectClusterInfo,
+		"CheckFolderPermissions": CheckFolderPermissions,
+		"CheckDefaultDatastore":  CheckDefaultDatastore,
+		"CheckPVs":               CheckPVs,
+		"CheckStorageClasses":    CheckStorageClasses,
 	}
 	DefaultNodeChecks map[string]NodeCheck = map[string]NodeCheck{
-		"NodeDummy": CheckNodeDummy,
+		"CheckNodeDiskUUID": CheckNodeDiskUUID,
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.

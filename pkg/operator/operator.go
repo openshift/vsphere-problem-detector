@@ -7,7 +7,6 @@ import (
 	"time"
 
 	operatorapi "github.com/openshift/api/operator/v1"
-	operatorv1 "github.com/openshift/api/operator/v1"
 	infrainformer "github.com/openshift/client-go/config/informers/externalversions/config/v1"
 	infralister "github.com/openshift/client-go/config/listers/config/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
@@ -46,6 +45,7 @@ type checkResult struct {
 }
 
 const (
+	controllerName             = "VSphereProblemDetectorController"
 	infrastructureName         = "cluster"
 	cloudCredentialsSecretName = "vsphere-cloud-credentials"
 )
@@ -77,7 +77,7 @@ func NewVSphereProblemDetectorController(
 		secretLister:         secretInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
-		eventRecorder:        eventRecorder.WithComponentSuffix("vSphereProblemDetectorController"),
+		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
 		clusterChecks:        check.DefaultClusterChecks,
 		nodeChecks:           check.DefaultNodeChecks,
 		backoff:              defaultBackoff,
@@ -86,7 +86,7 @@ func NewVSphereProblemDetectorController(
 		configInformer.Informer(),
 		secretInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
-	).ToController("vSphereProblemDetectorController", eventRecorder)
+	).ToController(controllerName, c.eventRecorder)
 }
 
 func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
@@ -105,6 +105,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if time.Now().After(c.nextCheck) || c.lastResults == nil {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
+			// This sets VSphereProblemDetectorControllerDegraded condition
 			return err
 		}
 		// Poke the controller sync loop after the delay to re-run tests
@@ -116,44 +117,17 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	}
 
 	availableCnd := operatorapi.OperatorCondition{
-		Type:   operatorapi.OperatorStatusTypeAvailable,
+		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
 		Status: operatorapi.ConditionTrue,
-	}
-	progressingCnd := operatorapi.OperatorCondition{
-		Type:   operatorapi.OperatorStatusTypeProgressing,
-		Status: operatorapi.ConditionFalse,
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
 		v1helpers.UpdateConditionFn(availableCnd),
-		v1helpers.UpdateConditionFn(progressingCnd),
-		resultConditionsFn(c.lastResults),
 	); updateErr != nil {
 		return updateErr
 	}
 
 	return nil
-}
-
-func resultConditionsFn(results []checkResult) v1helpers.UpdateStatusFunc {
-	return func(status *operatorv1.OperatorStatus) error {
-		for i := range results {
-			st := operatorapi.ConditionTrue
-			reason := ""
-			if !results[i].Result {
-				st = operatorapi.ConditionFalse
-				reason = "CheckFailed"
-			}
-			cnd := operatorapi.OperatorCondition{
-				Type:    results[i].Name + "OK",
-				Status:  st,
-				Message: results[i].Message,
-				Reason:  reason,
-			}
-			v1helpers.SetOperatorCondition(&status.Conditions, cnd)
-		}
-		return nil
-	}
 }
 
 func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
@@ -187,10 +161,11 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		results = append(results, nodeResults...)
 	}
 
-	finalErr := errors.NewAggregate(errs)
+	c.reportResults(results)
 	c.lastResults = results
 	c.lastCheck = time.Now()
 	var nextDelay time.Duration
+	finalErr := errors.NewAggregate(errs)
 	if finalErr != nil {
 		nextDelay = c.backoff.Step()
 	} else {
@@ -201,7 +176,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		nextDelay = defaultBackoff.Cap
 	}
 	c.nextCheck = c.lastCheck.Add(nextDelay)
-	klog.V(4).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
+	klog.V(2).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
 	return nextDelay, nil
 }
 
@@ -212,16 +187,17 @@ func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.
 		res := checkResult{
 			Name: name,
 		}
+		klog.V(4).Infof("%s starting", name)
 		err := checkFunc(checkContext)
 		if err != nil {
 			res.Result = false
 			res.Message = err.Error()
 			errs = append(errs, err)
 			clusterCheckErrrorMetric.WithLabelValues(name).Inc()
-			klog.V(2).Infof("Check %q failed: %s", name, err)
+			klog.V(2).Infof("%s failed: %s", name, err)
 		} else {
 			res.Result = true
-			klog.V(4).Infof("Check %q passed", name)
+			klog.V(2).Infof("%s passed", name)
 		}
 		clusterCheckTotalMetric.WithLabelValues(name).Inc()
 		results = append(results, res)
@@ -250,6 +226,7 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		for name, checkFunc := range c.nodeChecks {
 			var err error
 			if vmErr == nil {
+				klog.V(4).Infof("%s:%s starting ", name, node.Name)
 				err = checkFunc(checkContext, node, vm)
 			} else {
 				// Now use vmErr to mark all checks as failed with the same error
@@ -258,9 +235,9 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 			if err != nil {
 				checkErrors[name] = append(checkErrors[name], fmt.Errorf("%s: %s", node.Name, err))
 				nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
-				klog.V(2).Infof("Node %s: check %q failed: %s", node.Name, name, err)
+				klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
 			} else {
-				klog.V(4).Infof("Node %s: check %q passed", node.Name, name)
+				klog.V(2).Infof("%s:%s passed", name, node.Name)
 			}
 			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
 		}
@@ -276,7 +253,7 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		}
 		if len(errs) != 0 {
 			res.Result = false
-			res.Message = errors.NewAggregate(errs).Error()
+			res.Message = check.JoinErrors(errs).Error()
 			allErrors = append(allErrors, errs...)
 		} else {
 			res.Result = true
@@ -284,4 +261,15 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		results = append(results, res)
 	}
 	return results, errors.NewAggregate(allErrors)
+}
+
+// reportResults sends events for all checks.
+func (c *vSphereProblemDetectorController) reportResults(results []checkResult) {
+	for _, res := range results {
+		if res.Result {
+			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, res.Message)
+		} else {
+			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Message)
+		}
+	}
 }
