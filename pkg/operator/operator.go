@@ -161,10 +161,11 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		results = append(results, nodeResults...)
 	}
 
-	finalErr := errors.NewAggregate(errs)
+	c.reportResults(results)
 	c.lastResults = results
 	c.lastCheck = time.Now()
 	var nextDelay time.Duration
+	finalErr := errors.NewAggregate(errs)
 	if finalErr != nil {
 		nextDelay = c.backoff.Step()
 	} else {
@@ -260,4 +261,15 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		results = append(results, res)
 	}
 	return results, errors.NewAggregate(allErrors)
+}
+
+// reportResults sends events for all checks.
+func (c *vSphereProblemDetectorController) reportResults(results []checkResult) {
+	for _, res := range results {
+		if res.Result {
+			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, res.Message)
+		} else {
+			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Message)
+		}
+	}
 }
