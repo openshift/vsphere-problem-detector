@@ -7,7 +7,6 @@ import (
 	"time"
 
 	operatorapi "github.com/openshift/api/operator/v1"
-	operatorv1 "github.com/openshift/api/operator/v1"
 	infrainformer "github.com/openshift/client-go/config/informers/externalversions/config/v1"
 	infralister "github.com/openshift/client-go/config/listers/config/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
@@ -46,6 +45,7 @@ type checkResult struct {
 }
 
 const (
+	controllerName             = "VSphereProblemDetectorController"
 	infrastructureName         = "cluster"
 	cloudCredentialsSecretName = "vsphere-cloud-credentials"
 )
@@ -77,7 +77,7 @@ func NewVSphereProblemDetectorController(
 		secretLister:         secretInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
-		eventRecorder:        eventRecorder.WithComponentSuffix("vSphereProblemDetectorController"),
+		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
 		clusterChecks:        check.DefaultClusterChecks,
 		nodeChecks:           check.DefaultNodeChecks,
 		backoff:              defaultBackoff,
@@ -86,7 +86,7 @@ func NewVSphereProblemDetectorController(
 		configInformer.Informer(),
 		secretInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
-	).ToController("vSphereProblemDetectorController", eventRecorder)
+	).ToController(controllerName, c.eventRecorder)
 }
 
 func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
@@ -105,6 +105,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if time.Now().After(c.nextCheck) || c.lastResults == nil {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
+			// This sets VSphereProblemDetectorControllerDegraded condition
 			return err
 		}
 		// Poke the controller sync loop after the delay to re-run tests
@@ -116,44 +117,17 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	}
 
 	availableCnd := operatorapi.OperatorCondition{
-		Type:   operatorapi.OperatorStatusTypeAvailable,
+		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
 		Status: operatorapi.ConditionTrue,
-	}
-	progressingCnd := operatorapi.OperatorCondition{
-		Type:   operatorapi.OperatorStatusTypeProgressing,
-		Status: operatorapi.ConditionFalse,
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
 		v1helpers.UpdateConditionFn(availableCnd),
-		v1helpers.UpdateConditionFn(progressingCnd),
-		resultConditionsFn(c.lastResults),
 	); updateErr != nil {
 		return updateErr
 	}
 
 	return nil
-}
-
-func resultConditionsFn(results []checkResult) v1helpers.UpdateStatusFunc {
-	return func(status *operatorv1.OperatorStatus) error {
-		for i := range results {
-			st := operatorapi.ConditionTrue
-			reason := ""
-			if !results[i].Result {
-				st = operatorapi.ConditionFalse
-				reason = "CheckFailed"
-			}
-			cnd := operatorapi.OperatorCondition{
-				Type:    results[i].Name + "OK",
-				Status:  st,
-				Message: results[i].Message,
-				Reason:  reason,
-			}
-			v1helpers.SetOperatorCondition(&status.Conditions, cnd)
-		}
-		return nil
-	}
 }
 
 func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
