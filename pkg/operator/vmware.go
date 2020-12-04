@@ -96,6 +96,9 @@ func (c *vSphereProblemDetectorController) getVSphereConfig(ctx context.Context)
 	if err != nil {
 		return "", err
 	}
+	if infra.Status.PlatformStatus == nil {
+		return "", fmt.Errorf("unknown platform: infrastructure status.platformStatus is nil")
+	}
 	if infra.Status.PlatformStatus.Type != ocpv1.VSpherePlatformType {
 		return "", fmt.Errorf("unsupported platform: %s", infra.Status.PlatformStatus.Type)
 	}

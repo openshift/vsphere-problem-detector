@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	ocpv1 "github.com/openshift/api/config/v1"
 	operatorapi "github.com/openshift/api/operator/v1"
 	infrainformer "github.com/openshift/client-go/config/informers/externalversions/config/v1"
 	infralister "github.com/openshift/client-go/config/listers/config/v1"
@@ -81,6 +82,7 @@ func NewVSphereProblemDetectorController(
 		clusterChecks:        check.DefaultClusterChecks,
 		nodeChecks:           check.DefaultNodeChecks,
 		backoff:              defaultBackoff,
+		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
@@ -101,8 +103,13 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return nil
 	}
 
+	platformSupported, err := c.platformSupported()
+	if err != nil {
+		return err
+	}
+
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
-	if time.Now().After(c.nextCheck) || c.lastResults == nil {
+	if platformSupported && time.Now().After(c.nextCheck) {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
 			// This sets VSphereProblemDetectorControllerDegraded condition
@@ -272,4 +279,21 @@ func (c *vSphereProblemDetectorController) reportResults(results []checkResult) 
 			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Message)
 		}
 	}
+}
+
+func (c *vSphereProblemDetectorController) platformSupported() (bool, error) {
+	infra, err := c.infraLister.Get(infrastructureName)
+	if err != nil {
+		return false, err
+	}
+
+	if infra.Status.PlatformStatus == nil {
+		klog.V(4).Infof("Unknown platform: infrastructure status.platformStatus is nil")
+		return false, nil
+	}
+	if infra.Status.PlatformStatus.Type != ocpv1.VSpherePlatformType {
+		klog.V(4).Infof("Unsupported platform: %s", infra.Status.PlatformStatus.Type)
+		return false, nil
+	}
+	return true, nil
 }
