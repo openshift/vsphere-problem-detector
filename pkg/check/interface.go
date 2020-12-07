@@ -29,11 +29,12 @@ var (
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
 		&CheckNodeProviderID{},
+		&CollectNodeHWVersion{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
 	// Add a property to this list when a NodeCheck uses it.
-	NodeProperties = []string{"config.extraConfig", "config.flags"}
+	NodeProperties = []string{"config.extraConfig", "config.flags", "config.version"}
 )
 
 // KubeClient is an interface between individual vSphere check and Kubernetes.
