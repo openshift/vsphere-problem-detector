@@ -26,8 +26,9 @@ var (
 		"CheckPVs":               CheckPVs,
 		"CheckStorageClasses":    CheckStorageClasses,
 	}
-	DefaultNodeChecks map[string]NodeCheck = map[string]NodeCheck{
-		"CheckNodeDiskUUID": CheckNodeDiskUUID,
+	DefaultNodeChecks []NodeCheck = []NodeCheck{
+		&CheckNodeDiskUUID{},
+		&CheckNodeProviderID{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
@@ -58,8 +59,22 @@ type CheckContext struct {
 // It returns result of the check.
 type ClusterCheck func(ctx *CheckContext) error
 
-// Interface of a single vSphere node-level check. It gets connection to vSphere, vSphere config, connection to Kubernetes and a node to check.
-// It returns result of the check. Reason for separate node-level checks:
+// Interface of a single vSphere node-level check.
+// Reason for separate node-level checks:
 // 1) We want to expose per node metrics what checks failed/succeeded.
-// 2) When multiple checks need VM, we want to get it only once from the vSphere API.
-type NodeCheck func(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error
+// 2) When multiple checks need a VM, we want to get it only once from the vSphere API.
+//
+// Every round of checks starts with a single StartCheck(), then CheckNode for each
+// node. After all CheckNodes finish, the FinishCheck() is called.
+// It is guaranteed that only one "round" is running at the time.
+type NodeCheck interface {
+	Name() string
+	// Start new round of checks. The check may initialize its internal state here.
+	StartCheck() error
+	// Check of a single node. It gets connection to vSphere, vSphere config, connection
+	// to Kubernetes and a node to check. Returns result of the check.
+	CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error
+	// Finish current round of checks. The check may report metrics here.
+	// It will be called after all CheckNode calls finish.
+	FinishCheck()
+}
