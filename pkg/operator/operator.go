@@ -206,7 +206,6 @@ func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.
 			res.Result = true
 			klog.V(2).Infof("%s passed", name)
 		}
-		clusterCheckTotalMetric.WithLabelValues(name).Inc()
 		results = append(results, res)
 	}
 
@@ -246,7 +245,6 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 			} else {
 				klog.V(2).Infof("%s:%s passed", name, node.Name)
 			}
-			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
 		}
 	}
 
