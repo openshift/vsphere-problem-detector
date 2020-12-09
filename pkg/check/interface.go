@@ -15,7 +15,7 @@ import (
 
 var (
 	// Make the vSphere call timeout configurable.
-	Timeout = flag.Duration("vmware-timeout", 10*time.Second, "Timeout of all VMware calls")
+	Timeout = flag.Duration("vmware-timeout", 5*time.Minute, "Timeout of all VMware calls")
 
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
@@ -67,7 +67,7 @@ type ClusterCheck func(ctx *CheckContext) error
 // 2) When multiple checks need a VM, we want to get it only once from the vSphere API.
 //
 // Every round of checks starts with a single StartCheck(), then CheckNode for each
-// node. After all CheckNodes finish, the FinishCheck() is called.
+// node (possibly in parallel). After all CheckNodes finish, the FinishCheck() is called.
 // It is guaranteed that only one "round" is running at the time.
 type NodeCheck interface {
 	Name() string
@@ -75,6 +75,7 @@ type NodeCheck interface {
 	StartCheck() error
 	// Check of a single node. It gets connection to vSphere, vSphere config, connection
 	// to Kubernetes and a node to check. Returns result of the check.
+	// Multiple CheckNodes can run in parallel, each for a different node!
 	CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error
 	// Finish current round of checks. The check may report metrics here.
 	// It will be called after all CheckNode calls finish.
