@@ -31,7 +31,7 @@ type vSphereProblemDetectorController struct {
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
 	clusterChecks map[string]check.ClusterCheck
-	nodeChecks    map[string]check.NodeCheck
+	nodeChecks    []check.NodeCheck
 
 	lastCheck   time.Time
 	nextCheck   time.Time
@@ -219,10 +219,11 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		return nil, err
 	}
 
-	// Prepare list of errors of each check
+	// Name of check -> array of errors of the check (one for each node where it failed).
 	checkErrors := make(map[string][]error)
-	for name := range c.nodeChecks {
-		checkErrors[name] = []error{}
+	for _, nodeCheck := range c.nodeChecks {
+		checkErrors[nodeCheck.Name()] = []error{}
+		nodeCheck.StartCheck()
 	}
 
 	for i := range nodes {
@@ -230,11 +231,12 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 		vm, vmErr := c.getVM(checkContext, node)
 		// vmErr will be processed later to make all checks fail
 
-		for name, checkFunc := range c.nodeChecks {
+		for _, check := range c.nodeChecks {
 			var err error
+			name := check.Name()
 			if vmErr == nil {
 				klog.V(4).Infof("%s:%s starting ", name, node.Name)
-				err = checkFunc(checkContext, node, vm)
+				err = check.CheckNode(checkContext, node, vm)
 			} else {
 				// Now use vmErr to mark all checks as failed with the same error
 				err = vmErr
@@ -249,11 +251,16 @@ func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.Che
 			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
 		}
 	}
+	// Finish all node checks - this may set new metrics
+	for _, check := range c.nodeChecks {
+		check.FinishCheck()
+	}
 
 	// Convert the errors to checkResults
 	var results []checkResult
 	var allErrors []error
-	for name := range c.nodeChecks {
+	for _, nodeCheck := range c.nodeChecks {
+		name := nodeCheck.Name()
 		errs := checkErrors[name]
 		res := checkResult{
 			Name: name,

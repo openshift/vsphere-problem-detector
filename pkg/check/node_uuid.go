@@ -9,7 +9,19 @@ import (
 )
 
 // CheckNodeDiskUUID makes sure that all nodes have disk.enableUUID=TRUE.
-func CheckNodeDiskUUID(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
+type CheckNodeDiskUUID struct{}
+
+var _ NodeCheck = &CheckNodeDiskUUID{}
+
+func (c *CheckNodeDiskUUID) Name() string {
+	return "CheckNodeDiskUUID"
+}
+
+func (c *CheckNodeDiskUUID) StartCheck() error {
+	return nil
+}
+
+func (c *CheckNodeDiskUUID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	if vm.Config.Flags.DiskUuidEnabled == nil {
 		return fmt.Errorf("the node has empty disk.enableUUID")
 	}
@@ -18,4 +30,8 @@ func CheckNodeDiskUUID(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) 
 	}
 	klog.V(4).Infof("... the node has correct disk.enableUUID")
 	return nil
+}
+
+func (c *CheckNodeDiskUUID) FinishCheck() {
+	return
 }
