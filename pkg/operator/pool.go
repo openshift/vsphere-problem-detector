@@ -5,53 +5,60 @@ import (
 	"sync"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
-	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 )
 
 // CheckThreadPool runs individual functions (presumably checks) as go routines.
 // It makes sure that only limited number of functions actually run in parallel.
 type CheckThreadPool struct {
-	wg  sync.WaitGroup
-	sem *semaphore.Weighted
+	wg     sync.WaitGroup
+	workCh chan func()
 }
 
 // Creates a new CheckThreadPool with given max. number of goroutines.
-func NewCheckThreadPool(parallelism int64) *CheckThreadPool {
-	return &CheckThreadPool{
-		sem: semaphore.NewWeighted(parallelism),
+func NewCheckThreadPool(parallelism int) *CheckThreadPool {
+	pool := &CheckThreadPool{
+		workCh: make(chan func(), 100),
 	}
+
+	for i := 0; i < parallelism; i++ {
+		i := i
+		go func() {
+			pool.worker(i)
+		}()
+	}
+	return pool
 }
 
-// RunGoroutine spawns a new go routine with given check.
-// The goroutine waits for a semaphore, so only limited number
-// of goroutines actually run in parallel.
-// If the check cannot start before ctx finishes, the check
-// is not performed at all and it is silently thrown away,
-// assuming the operator is shutting down anyway.
+func (r *CheckThreadPool) worker(index int) {
+	klog.V(5).Infof("Worker %d started", index)
+	for work := range r.workCh {
+		func() {
+			// Make sure to mark the work as done on panic
+			defer r.wg.Done()
+			work()
+		}()
+	}
+	klog.V(5).Infof("Worker %d finished", index)
+}
+
+// RunGoroutine runs given check in a worker goroutine.
+// This call can block until a worker goroutine is available.
 func (r *CheckThreadPool) RunGoroutine(ctx context.Context, check func()) {
 	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-
-		err := r.sem.Acquire(ctx, 1)
-		if err != nil {
-			// This means the operator is being stopped
-			klog.V(2).Infof("Warning: check stopped, operator is shutting down: %s", err)
-			return
-		}
-		defer r.sem.Release(1)
-		check()
-	}()
+	r.workCh <- check
 }
 
 // Wait blocks until all previously started goroutines finish
 // or ctx expires.
 func (r *CheckThreadPool) Wait(ctx context.Context) error {
+	// wg.Wait does not provide a channel, so make one.
 	done := make(chan interface{})
 	go func() {
 		r.wg.Wait()
 		close(done)
+		// Finish all workers when all work is done
+		close(r.workCh)
 	}()
 
 	select {
