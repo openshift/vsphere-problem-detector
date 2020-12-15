@@ -66,7 +66,10 @@ func (r *CheckThreadPool) Wait(ctx context.Context) error {
 // as the checks run in parallel.
 type ResultCollector struct {
 	resultsMutex sync.Mutex
-	results      map[string][]error
+	// map check name -> list of all check results incl. all nil errors.
+	// For cluster level checks, only one error is expected, for node
+	// level checks, every node will have a single error here.
+	results map[string][]error
 }
 
 // NewResultCollector creates a new ResultCollector
