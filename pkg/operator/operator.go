@@ -155,10 +155,10 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls)
 	resultCollector := NewResultsCollector()
 	var errs []error
-	if err := c.addClusterChecks(checkContext, checkRunner, resultCollector); err != nil {
+	if err := c.enqueueClusterChecks(checkContext, checkRunner, resultCollector); err != nil {
 		errs = append(errs, err)
 	}
-	if err := c.addNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
+	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -191,7 +191,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	return nextDelay, nil
 }
 
-func (c *vSphereProblemDetectorController) addClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
+func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
 	for name, checkFunc := range c.clusterChecks {
 		name := name
 		checkFunc := checkFunc
@@ -219,7 +219,7 @@ func (c *vSphereProblemDetectorController) runSingleClusterCheck(checkContext *c
 	resultCollector.AddResult(res)
 }
 
-func (c *vSphereProblemDetectorController) addNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
+func (c *vSphereProblemDetectorController) enqueueNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
 	nodes, err := c.ListNodes(checkContext.Context)
 	if err != nil {
 		return err
@@ -231,12 +231,12 @@ func (c *vSphereProblemDetectorController) addNodeChecks(checkContext *check.Che
 
 	for i := range nodes {
 		node := &nodes[i]
-		c.addSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
+		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
 	}
 	return nil
 }
 
-func (c *vSphereProblemDetectorController) addSingleNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector, node *v1.Node) {
+func (c *vSphereProblemDetectorController) enqueueSingleNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector, node *v1.Node) {
 	// Run a go routine that reads VM from vSphere and schedules separate goroutines for each check.
 	checkRunner.RunGoroutine(checkContext.Context, func() {
 		// Try to get VM
