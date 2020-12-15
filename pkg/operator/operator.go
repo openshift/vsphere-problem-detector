@@ -15,7 +15,6 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
@@ -154,12 +153,9 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls)
 	resultCollector := NewResultsCollector()
-	var errs []error
-	if err := c.enqueueClusterChecks(checkContext, checkRunner, resultCollector); err != nil {
-		errs = append(errs, err)
-	}
+	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
-		errs = append(errs, err)
+		return 0, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
@@ -169,14 +165,12 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 
 	klog.V(4).Infof("All checks complete")
 
-	results, resultErrors := resultCollector.Collect()
+	results, checksFailed := resultCollector.Collect()
 	c.reportResults(results)
 	c.lastResults = results
 	c.lastCheck = time.Now()
 	var nextDelay time.Duration
-	// Join errors from add*Check and all result errors to determine the next check delay
-	finalErr := errors.NewAggregate(append(errs, resultErrors...))
-	if finalErr != nil {
+	if checksFailed {
 		// Use exponential backoff
 		nextDelay = c.backoff.Step()
 	} else {
@@ -191,7 +185,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	return nextDelay, nil
 }
 
-func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
+func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) {
 	for name, checkFunc := range c.clusterChecks {
 		name := name
 		checkFunc := checkFunc
@@ -199,7 +193,6 @@ func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *ch
 			c.runSingleClusterCheck(checkContext, name, checkFunc, resultCollector)
 		})
 	}
-	return nil
 }
 
 func (c *vSphereProblemDetectorController) runSingleClusterCheck(checkContext *check.CheckContext, name string, checkFunc check.ClusterCheck, resultCollector *ResultCollector) {

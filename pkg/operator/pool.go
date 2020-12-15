@@ -100,9 +100,10 @@ func (r *ResultCollector) AddResult(res checkResult) {
 
 // Collect returns currently accumulated checks.
 // It merges results of the same check into a single error
-// It returns status of each check and overall status
-// of all checks.
-func (r *ResultCollector) Collect() ([]checkResult, []error) {
+// It returns status of each check and overall
+// succeeded / failed status of all checks.
+func (r *ResultCollector) Collect() ([]checkResult, bool) {
+	failed := false
 	r.resultsMutex.Lock()
 	defer r.resultsMutex.Unlock()
 
@@ -125,8 +126,8 @@ func (r *ResultCollector) Collect() ([]checkResult, []error) {
 			res.Error = nil
 		} else {
 			res.Error = check.JoinErrors(errs)
+			failed = true
 		}
-		checkResults = append(checkResults, res)
 	}
-	return checkResults, allErrs
+	return checkResults, failed
 }
