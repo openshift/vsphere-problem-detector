@@ -14,7 +14,7 @@ type CheckNodeProviderID struct{}
 var _ NodeCheck = &CheckNodeProviderID{}
 
 func (c *CheckNodeProviderID) Name() string {
-	return "CheckNodeDiskUUID"
+	return "CheckNodeProviderID"
 }
 
 func (c *CheckNodeProviderID) StartCheck() error {
