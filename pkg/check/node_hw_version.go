@@ -1,6 +1,8 @@
 package check
 
 import (
+	"sync"
+
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
@@ -11,7 +13,8 @@ import (
 // CollectNodeHWVersion emits metric with HW version of each VM
 type CollectNodeHWVersion struct {
 	// map HW version -> count of nodes with this version
-	hwVersions map[string]int
+	hwVersions     map[string]int
+	hwVersionsLock sync.Mutex
 }
 
 var _ NodeCheck = &CollectNodeHWVersion{}
@@ -40,6 +43,8 @@ func (c *CollectNodeHWVersion) Name() string {
 }
 
 func (c *CollectNodeHWVersion) StartCheck() error {
+	c.hwVersionsLock.Lock()
+	defer c.hwVersionsLock.Unlock()
 	c.hwVersions = make(map[string]int)
 	return nil
 }
@@ -47,11 +52,18 @@ func (c *CollectNodeHWVersion) StartCheck() error {
 func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	hwVersion := vm.Config.Version
 	klog.V(2).Infof("Node %s has HW version %s", node.Name, hwVersion)
+
+	c.hwVersionsLock.Lock()
+	defer c.hwVersionsLock.Unlock()
+
 	c.hwVersions[hwVersion]++
 	return nil
 }
 
 func (c *CollectNodeHWVersion) FinishCheck() {
+	c.hwVersionsLock.Lock()
+	defer c.hwVersionsLock.Unlock()
+
 	for hwVersion, count := range c.hwVersions {
 		hwVersionMetric.WithLabelValues(hwVersion).Set(float64(count))
 	}

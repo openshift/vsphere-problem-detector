@@ -2,7 +2,6 @@ package operator
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"time"
 
@@ -14,7 +13,8 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
-	"k8s.io/apimachinery/pkg/util/errors"
+	"github.com/vmware/govmomi/vim25/mo"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
@@ -40,15 +40,16 @@ type vSphereProblemDetectorController struct {
 }
 
 type checkResult struct {
-	Name    string
-	Result  bool
-	Message string
+	Name  string
+	Error error
 }
 
 const (
 	controllerName             = "VSphereProblemDetectorController"
 	infrastructureName         = "cluster"
 	cloudCredentialsSecretName = "vsphere-cloud-credentials"
+	// TODO: make it configurable?
+	parallelVSPhereCalls = 10
 )
 
 var (
@@ -143,7 +144,6 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		return 0, err
 	}
 
-	var results []checkResult
 	checkContext := &check.CheckContext{
 		Context:    ctx,
 		VMConfig:   vmConfig,
@@ -151,34 +151,32 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		KubeClient: c,
 	}
 
-	var errs []error
-	clusterResults, err := c.runClusterChecks(checkContext)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	if clusterResults != nil {
-		results = append(results, clusterResults...)
+	checkRunner := NewCheckThreadPool(parallelVSPhereCalls)
+	resultCollector := NewResultsCollector()
+	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
+	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
+		return 0, err
 	}
 
-	nodeResults, err := c.runNodeChecks(checkContext)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	if nodeResults != nil {
-		results = append(results, nodeResults...)
+	klog.V(4).Infof("Waiting for all checks")
+	if err := checkRunner.Wait(ctx); err != nil {
+		return 0, err
 	}
 
+	klog.V(4).Infof("All checks complete")
+
+	results, checksFailed := resultCollector.Collect()
 	c.reportResults(results)
 	c.lastResults = results
 	c.lastCheck = time.Now()
 	var nextDelay time.Duration
-	finalErr := errors.NewAggregate(errs)
-	if finalErr != nil {
+	if checksFailed {
+		// Use exponential backoff
 		nextDelay = c.backoff.Step()
 	} else {
 		// Reset the backoff on success
 		c.backoff = defaultBackoff
-		// The next check after success is after the maximum backoff
+		// Delay after success is after the maximum backoff
 		// (i.e. retry as slow as allowed).
 		nextDelay = defaultBackoff.Cap
 	}
@@ -187,103 +185,102 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	return nextDelay, nil
 }
 
-func (c *vSphereProblemDetectorController) runClusterChecks(checkContext *check.CheckContext) ([]checkResult, error) {
-	var errs []error
-	var results []checkResult
+func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) {
 	for name, checkFunc := range c.clusterChecks {
-		res := checkResult{
-			Name: name,
-		}
-		klog.V(4).Infof("%s starting", name)
-		err := checkFunc(checkContext)
-		if err != nil {
-			res.Result = false
-			res.Message = err.Error()
-			errs = append(errs, err)
-			clusterCheckErrrorMetric.WithLabelValues(name).Inc()
-			klog.V(2).Infof("%s failed: %s", name, err)
-		} else {
-			res.Result = true
-			klog.V(2).Infof("%s passed", name)
-		}
-		clusterCheckTotalMetric.WithLabelValues(name).Inc()
-		results = append(results, res)
+		name := name
+		checkFunc := checkFunc
+		checkRunner.RunGoroutine(checkContext.Context, func() {
+			c.runSingleClusterCheck(checkContext, name, checkFunc, resultCollector)
+		})
 	}
-
-	return results, errors.NewAggregate(errs)
 }
 
-func (c *vSphereProblemDetectorController) runNodeChecks(checkContext *check.CheckContext) ([]checkResult, error) {
+func (c *vSphereProblemDetectorController) runSingleClusterCheck(checkContext *check.CheckContext, name string, checkFunc check.ClusterCheck, resultCollector *ResultCollector) {
+	res := checkResult{
+		Name: name,
+	}
+	klog.V(4).Infof("%s starting", name)
+	err := checkFunc(checkContext)
+	if err != nil {
+		res.Error = err
+		clusterCheckErrrorMetric.WithLabelValues(name).Inc()
+		klog.V(2).Infof("%s failed: %s", name, err)
+	} else {
+		klog.V(2).Infof("%s passed", name)
+	}
+	clusterCheckTotalMetric.WithLabelValues(name).Inc()
+	resultCollector.AddResult(res)
+}
+
+func (c *vSphereProblemDetectorController) enqueueNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
 	nodes, err := c.ListNodes(checkContext.Context)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Name of check -> array of errors of the check (one for each node where it failed).
-	checkErrors := make(map[string][]error)
 	for _, nodeCheck := range c.nodeChecks {
-		checkErrors[nodeCheck.Name()] = []error{}
 		nodeCheck.StartCheck()
 	}
 
 	for i := range nodes {
 		node := &nodes[i]
-		vm, vmErr := c.getVM(checkContext, node)
-		// vmErr will be processed later to make all checks fail
+		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
+	}
+	return nil
+}
 
-		for _, check := range c.nodeChecks {
-			var err error
-			name := check.Name()
-			if vmErr == nil {
-				klog.V(4).Infof("%s:%s starting ", name, node.Name)
-				err = check.CheckNode(checkContext, node, vm)
-			} else {
-				// Now use vmErr to mark all checks as failed with the same error
-				err = vmErr
+func (c *vSphereProblemDetectorController) enqueueSingleNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector, node *v1.Node) {
+	// Run a go routine that reads VM from vSphere and schedules separate goroutines for each check.
+	checkRunner.RunGoroutine(checkContext.Context, func() {
+		// Try to get VM
+		vm, err := c.getVM(checkContext, node)
+		if err != nil {
+			// mark all checks as failed
+			for _, check := range c.nodeChecks {
+				res := checkResult{
+					Name:  check.Name(),
+					Error: err,
+				}
+				resultCollector.AddResult(res)
 			}
-			if err != nil {
-				checkErrors[name] = append(checkErrors[name], fmt.Errorf("%s: %s", node.Name, err))
-				nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
-				klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
-			} else {
-				klog.V(2).Infof("%s:%s passed", name, node.Name)
-			}
-			nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
+			return
 		}
-	}
-	// Finish all node checks - this may set new metrics
-	for _, check := range c.nodeChecks {
-		check.FinishCheck()
-	}
+		// We got the VM, enqueue all node checks
+		for i := range c.nodeChecks {
+			check := c.nodeChecks[i]
+			klog.V(4).Infof("Adding node check %s:%s", node.Name, check.Name())
+			checkRunner.RunGoroutine(checkContext.Context, func() {
+				c.runSingleNodeSingleCheck(checkContext, resultCollector, node, vm, check)
+			})
+		}
+	})
+}
 
-	// Convert the errors to checkResults
-	var results []checkResult
-	var allErrors []error
-	for _, nodeCheck := range c.nodeChecks {
-		name := nodeCheck.Name()
-		errs := checkErrors[name]
-		res := checkResult{
-			Name: name,
-		}
-		if len(errs) != 0 {
-			res.Result = false
-			res.Message = check.JoinErrors(errs).Error()
-			allErrors = append(allErrors, errs...)
-		} else {
-			res.Result = true
-		}
-		results = append(results, res)
+func (c *vSphereProblemDetectorController) runSingleNodeSingleCheck(checkContext *check.CheckContext, resultCollector *ResultCollector, node *v1.Node, vm *mo.VirtualMachine, check check.NodeCheck) {
+	name := check.Name()
+	res := checkResult{
+		Name: name,
 	}
-	return results, errors.NewAggregate(allErrors)
+	klog.V(4).Infof("%s:%s starting ", name, node.Name)
+	err := check.CheckNode(checkContext, node, vm)
+	if err != nil {
+		res.Error = err
+		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
+		klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
+	} else {
+		klog.V(2).Infof("%s:%s passed", name, node.Name)
+	}
+	nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
+	resultCollector.AddResult(res)
 }
 
 // reportResults sends events for all checks.
 func (c *vSphereProblemDetectorController) reportResults(results []checkResult) {
 	for _, res := range results {
-		if res.Result {
-			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, res.Message)
+		if res.Error != nil {
+			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Error.Error())
 		} else {
-			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Message)
+			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, "Check succeeded")
 		}
 	}
 }
