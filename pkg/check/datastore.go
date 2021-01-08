@@ -242,7 +242,7 @@ func checkVolumeName(name string) error {
 	if err != nil {
 		return fmt.Errorf("error running systemd-escape: %s", err)
 	}
-	if len(path) >= 255 {
+	if len(escapedPath) >= 255 {
 		return fmt.Errorf("datastore name is too long: escaped volume path %q must be under 255 characters, got %d", escapedPath, len(escapedPath))
 	}
 	return nil
