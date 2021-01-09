@@ -17,12 +17,25 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 )
 
+var (
+	runInVanillaKube = pflag.Bool("vanilla-kube", false, "Run in vanilla kube (default: false)")
+	cloudConfig      = pflag.String("cloud-config", "", "Location of vsphere cloud-configuration")
+)
+
 func main() {
 	pflag.CommandLine.SetNormalizeFunc(k8sflag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
 	logs.InitLogs()
 	defer logs.FlushLogs()
+	pflag.Parse()
+
+	if cloudConfig != nil {
+		operator.CloudConfigLocation = *cloudConfig
+	}
+	if runInVanillaKube != nil {
+		operator.RunningInVanillaKube = *runInVanillaKube
+	}
 
 	command := NewOperatorCommand()
 	if err := command.Execute(); err != nil {

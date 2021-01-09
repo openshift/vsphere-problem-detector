@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	ocpv1 "github.com/openshift/api/config/v1"
@@ -35,6 +36,27 @@ func (c *vSphereProblemDetectorController) connect(ctx context.Context) (*vspher
 	if err != nil {
 		return nil, nil, err
 	}
+
+	vmClient, err := c.newClient(ctx, cfg, username, password)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+	}
+	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
+	return cfg, vmClient.Client, nil
+}
+
+func (c *vSphereProblemDetectorController) connectPlainConfig(ctx context.Context, configFile string) (*vsphere.VSphereConfig, *vim25.Client, error) {
+	file, err := os.Open(configFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg := &vsphere.VSphereConfig{}
+	err = gcfg.ReadInto(cfg, file)
+	if err != nil {
+		return nil, nil, err
+	}
+	username := cfg.Global.User
+	password := cfg.Global.Password
 
 	vmClient, err := c.newClient(ctx, cfg, username, password)
 	if err != nil {

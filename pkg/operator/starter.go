@@ -24,59 +24,83 @@ const (
 	cloudConfigNamespace = "openshift-config"
 )
 
+var (
+	RunningInVanillaKube = false
+	CloudConfigLocation  = ""
+)
+
 func RunOperator(ctx context.Context, controllerConfig *controllercmd.ControllerContext) error {
 	kubeClient, err := kubernetes.NewForConfig(controllerConfig.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
-	kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace)
 
-	csiConfigClient, err := operatorclient.NewForConfig(controllerConfig.KubeConfig)
-	if err != nil {
-		return err
-	}
-	csiConfigInformers := informer.NewSharedInformerFactoryWithOptions(csiConfigClient, resync)
+	if RunningInVanillaKube {
+		klog.Info("Starting the Informers.")
+		operator := NewVSphereProblemDetectorControllerWithPlainKube(
+			kubeClient,
+			CloudConfigLocation,
+			controllerConfig.EventRecorder,
+		)
 
-	operatorClient := &OperatorClient{
-		csiConfigInformers,
-		csiConfigClient.OperatorV1(),
-	}
+		klog.Info("Starting the controllers")
+		for _, controller := range []interface {
+			Run(ctx context.Context, workers int)
+		}{
+			operator,
+		} {
+			go controller.Run(ctx, 1)
+		}
+	} else {
+		kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace)
 
-	configClient, err := configclient.NewForConfig(controllerConfig.KubeConfig)
-	if err != nil {
-		return err
-	}
-	configInformers := configinformer.NewSharedInformerFactoryWithOptions(configClient, resync)
+		operatorConfigClient, err := operatorclient.NewForConfig(controllerConfig.KubeConfig)
+		if err != nil {
+			return err
+		}
+		operatorConfigInformers := informer.NewSharedInformerFactoryWithOptions(operatorConfigClient, resync)
 
-	operator := NewVSphereProblemDetectorController(
-		operatorClient,
-		kubeClient,
-		kubeInformers,
-		configInformers.Config().V1().Infrastructures(),
-		controllerConfig.EventRecorder,
-	)
+		operatorClient := &OperatorClient{
+			operatorConfigInformers,
+			operatorConfigClient.OperatorV1(),
+		}
 
-	logLevelController := loglevel.NewClusterOperatorLoggingController(operatorClient, controllerConfig.EventRecorder)
+		configClient, err := configclient.NewForConfig(controllerConfig.KubeConfig)
+		if err != nil {
+			return err
+		}
+		configInformers := configinformer.NewSharedInformerFactoryWithOptions(configClient, resync)
 
-	klog.Info("Starting the Informers.")
-	for _, informer := range []interface {
-		Start(stopCh <-chan struct{})
-	}{
-		csiConfigInformers,
-		kubeInformers,
-		configInformers,
-	} {
-		informer.Start(ctx.Done())
-	}
+		operator := NewVSphereProblemDetectorController(
+			operatorClient,
+			kubeClient,
+			kubeInformers,
+			configInformers.Config().V1().Infrastructures(),
+			controllerConfig.EventRecorder,
+		)
 
-	klog.Info("Starting the controllers")
-	for _, controller := range []interface {
-		Run(ctx context.Context, workers int)
-	}{
-		logLevelController,
-		operator,
-	} {
-		go controller.Run(ctx, 1)
+		logLevelController := loglevel.NewClusterOperatorLoggingController(operatorClient, controllerConfig.EventRecorder)
+
+		klog.Info("Starting the Informers.")
+		for _, informer := range []interface {
+			Start(stopCh <-chan struct{})
+		}{
+			operatorConfigInformers,
+			kubeInformers,
+			configInformers,
+		} {
+			informer.Start(ctx.Done())
+		}
+
+		klog.Info("Starting the controllers")
+		for _, controller := range []interface {
+			Run(ctx context.Context, workers int)
+		}{
+			logLevelController,
+			operator,
+		} {
+			go controller.Run(ctx, 1)
+		}
 	}
 	<-ctx.Done()
 

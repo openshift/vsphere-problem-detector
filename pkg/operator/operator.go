@@ -13,12 +13,14 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/legacy-cloud-providers/vsphere"
 )
 
 type vSphereProblemDetectorController struct {
@@ -32,6 +34,9 @@ type vSphereProblemDetectorController struct {
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
 	clusterChecks map[string]check.ClusterCheck
 	nodeChecks    []check.NodeCheck
+
+	// optional value if running using plain kube
+	cloudConfigLocation string
 
 	lastCheck   time.Time
 	nextCheck   time.Time
@@ -92,6 +97,44 @@ func NewVSphereProblemDetectorController(
 	).ToController(controllerName, c.eventRecorder)
 }
 
+func NewVSphereProblemDetectorControllerWithPlainKube(kubeClient kubernetes.Interface, cloudConfig string, eventRecorder events.Recorder) factory.Controller {
+	c := &vSphereProblemDetectorController{
+		kubeClient:          kubeClient,
+		eventRecorder:       eventRecorder.WithComponentSuffix(controllerName),
+		clusterChecks:       check.DefaultClusterChecks,
+		nodeChecks:          check.DefaultNodeChecks,
+		backoff:             defaultBackoff,
+		cloudConfigLocation: cloudConfig,
+		nextCheck:           time.Time{}, // Explicitly set to zero to run checks on the first sync().
+	}
+	return factory.New().WithSync(c.plainKubeSync).ToController(controllerName, c.eventRecorder)
+}
+
+func (c *vSphereProblemDetectorController) plainKubeSync(ctx context.Context, syncCtx factory.SyncContext) error {
+	klog.V(4).Infof("vSphereProblemDetectorController.Sync started")
+	defer klog.V(4).Infof("vSphereProblemDetectorController.Sync finished")
+
+	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
+	if time.Now().After(c.nextCheck) {
+		vmConfig, vmClient, err := c.connectPlainConfig(ctx, c.cloudConfigLocation)
+		if err != nil {
+			return err
+		}
+		delay, err := c.runChecks(ctx, vmConfig, vmClient)
+		if err != nil {
+			// This sets VSphereProblemDetectorControllerDegraded condition
+			return err
+		}
+		// Poke the controller sync loop after the delay to re-run tests
+		queue := syncCtx.Queue()
+		queueKey := syncCtx.QueueKey()
+		time.AfterFunc(delay, func() {
+			queue.Add(queueKey)
+		})
+	}
+	return nil
+}
+
 func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
 	klog.V(4).Infof("vSphereProblemDetectorController.Sync started")
 	defer klog.V(4).Infof("vSphereProblemDetectorController.Sync finished")
@@ -111,7 +154,11 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
 	if platformSupported && time.Now().After(c.nextCheck) {
-		delay, err := c.runChecks(ctx)
+		vmConfig, vmClient, err := c.connect(ctx)
+		if err != nil {
+			return err
+		}
+		delay, err := c.runChecks(ctx, vmConfig, vmClient)
 		if err != nil {
 			// This sets VSphereProblemDetectorControllerDegraded condition
 			return err
@@ -138,12 +185,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	return nil
 }
 
-func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
-	vmConfig, vmClient, err := c.connect(ctx)
-	if err != nil {
-		return 0, err
-	}
-
+func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, vmConfig *vsphere.VSphereConfig, vmClient *vim25.Client) (time.Duration, error) {
 	checkContext := &check.CheckContext{
 		Context:    ctx,
 		VMConfig:   vmConfig,
