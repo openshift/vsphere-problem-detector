@@ -21,9 +21,13 @@ const (
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
 func CheckStorageClasses(ctx *CheckContext) error {
-	infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
-	if err != nil {
-		return err
+	var infra *configv1.Infrastructure
+	var err error
+	if !ctx.PlainKube {
+		infra, err = ctx.KubeClient.GetInfrastructure(ctx.Context)
+		if err != nil {
+			return err
+		}
 	}
 
 	scs, err := ctx.KubeClient.ListStorageClasses(ctx.Context)
@@ -84,14 +88,24 @@ func CheckPVs(ctx *CheckContext) error {
 
 // CheckDefaultDatastore checks that the default data store name in vSphere config file is short enough.
 func CheckDefaultDatastore(ctx *CheckContext) error {
-	infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
-	if err != nil {
-		return err
+	dsName := ctx.VMConfig.Global.DefaultDatastore
+	if dsName == "" {
+		dsName = ctx.VMConfig.Workspace.DefaultDatastore
 	}
 
-	dsName := ctx.VMConfig.Workspace.DefaultDatastore
-	if err := checkDataStore(dsName, infra); err != nil {
-		return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+	if ctx.PlainKube {
+		if err := checkDataStore(dsName, nil); err != nil {
+			return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+		}
+	} else {
+		infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
+		if err != nil {
+			return err
+		}
+		if err := checkDataStore(dsName, infra); err != nil {
+			return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+		}
+
 	}
 	return nil
 }
@@ -227,7 +241,10 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 }
 
 func checkDataStore(dsName string, infrastructure *configv1.Infrastructure) error {
-	clusterID := infrastructure.Status.InfrastructureName
+	clusterID := ""
+	if infrastructure != nil {
+		clusterID = infrastructure.Status.InfrastructureName
+	}
 	volumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s-dynamic-pvc-00000000-0000-0000-0000-000000000000.vmdk", dsName, clusterID)
 	klog.V(4).Infof("Checking data store %q with potential volume Name %s", dsName, volumeName)
 	if err := checkVolumeName(volumeName); err != nil {

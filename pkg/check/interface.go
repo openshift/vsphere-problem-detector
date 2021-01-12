@@ -55,6 +55,7 @@ type CheckContext struct {
 	VMConfig   *vsphere.VSphereConfig
 	VMClient   *vim25.Client
 	KubeClient KubeClient
+	PlainKube  bool
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.

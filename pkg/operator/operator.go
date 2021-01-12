@@ -107,7 +107,7 @@ func NewVSphereProblemDetectorControllerWithPlainKube(kubeClient kubernetes.Inte
 		cloudConfigLocation: cloudConfig,
 		nextCheck:           time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
-	return factory.New().WithSync(c.plainKubeSync).ToController(controllerName, c.eventRecorder)
+	return factory.New().WithSync(c.plainKubeSync).ResyncEvery(30*time.Second).ToController(controllerName, c.eventRecorder)
 }
 
 func (c *vSphereProblemDetectorController) plainKubeSync(ctx context.Context, syncCtx factory.SyncContext) error {
@@ -120,7 +120,7 @@ func (c *vSphereProblemDetectorController) plainKubeSync(ctx context.Context, sy
 		if err != nil {
 			return err
 		}
-		delay, err := c.runChecks(ctx, vmConfig, vmClient)
+		delay, err := c.runChecks(ctx, vmConfig, vmClient, true)
 		if err != nil {
 			// This sets VSphereProblemDetectorControllerDegraded condition
 			return err
@@ -158,7 +158,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		if err != nil {
 			return err
 		}
-		delay, err := c.runChecks(ctx, vmConfig, vmClient)
+		delay, err := c.runChecks(ctx, vmConfig, vmClient, false)
 		if err != nil {
 			// This sets VSphereProblemDetectorControllerDegraded condition
 			return err
@@ -185,12 +185,13 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	return nil
 }
 
-func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, vmConfig *vsphere.VSphereConfig, vmClient *vim25.Client) (time.Duration, error) {
+func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, vmConfig *vsphere.VSphereConfig, vmClient *vim25.Client, plainKube bool) (time.Duration, error) {
 	checkContext := &check.CheckContext{
 		Context:    ctx,
 		VMConfig:   vmConfig,
 		VMClient:   vmClient,
 		KubeClient: c,
+		PlainKube:  plainKube,
 	}
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls)

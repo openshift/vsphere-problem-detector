@@ -12,8 +12,8 @@ import (
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
-
 	"k8s.io/klog/v2"
 )
 
@@ -25,8 +25,8 @@ const (
 )
 
 var (
-	RunningInVanillaKube = false
-	CloudConfigLocation  = ""
+	RunningInVanillaKube = pflag.Bool("vanilla-kube", false, "Run in vanilla kube (default: false)")
+	CloudConfigLocation  = pflag.String("cloud-config", "", "Location of vsphere cloud-configuration")
 )
 
 func RunOperator(ctx context.Context, controllerConfig *controllercmd.ControllerContext) error {
@@ -35,22 +35,16 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		return err
 	}
 
-	if RunningInVanillaKube {
-		klog.Info("Starting the Informers.")
+	if RunningInVanillaKube != nil && *RunningInVanillaKube {
+		klog.Info("Starting the Informers for plain kubernetes.")
 		operator := NewVSphereProblemDetectorControllerWithPlainKube(
 			kubeClient,
-			CloudConfigLocation,
+			*CloudConfigLocation,
 			controllerConfig.EventRecorder,
 		)
 
-		klog.Info("Starting the controllers")
-		for _, controller := range []interface {
-			Run(ctx context.Context, workers int)
-		}{
-			operator,
-		} {
-			go controller.Run(ctx, 1)
-		}
+		klog.Info("Starting the controllers for plain kube")
+		go operator.Run(ctx, 1)
 	} else {
 		kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace)
 
