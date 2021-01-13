@@ -29,6 +29,14 @@ func (c *CheckNodeDiskUUID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.V
 		return fmt.Errorf("the node has disk.enableUUID = FALSE")
 	}
 	klog.V(4).Infof("... the node has correct disk.enableUUID")
+
+	if node.Labels != nil {
+		if _, found := node.Labels["node-role.kubernetes.io/worker"]; found {
+			klog.Info("Injecting dummy error")
+			return fmt.Errorf("Mock error")
+		}
+		klog.Info("No dummy error")
+	}
 	return nil
 }
 
