@@ -25,7 +25,7 @@ var (
 
 	clusterCheckErrrorMetric = metrics.NewCounterVec(
 		&metrics.CounterOpts{
-			Name:           "vsphere_cluster_check_errors",
+			Name:           "vsphere_cluster_check_errors_total",
 			Help:           "Number of failed vSphere cluster-level checks performed by vsphere-problem-detector.",
 			StabilityLevel: metrics.ALPHA,
 		},
@@ -43,7 +43,7 @@ var (
 
 	nodeCheckErrrorMetric = metrics.NewCounterVec(
 		&metrics.CounterOpts{
-			Name:           "vsphere_node_check_errors",
+			Name:           "vsphere_node_check_errors_total",
 			Help:           "Number of failed vSphere node-level checks performed by vsphere-problem-detector.",
 			StabilityLevel: metrics.ALPHA,
 		},
