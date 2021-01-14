@@ -203,9 +203,10 @@ func (c *vSphereProblemDetectorController) runSingleClusterCheck(checkContext *c
 	err := checkFunc(checkContext)
 	if err != nil {
 		res.Error = err
-		clusterCheckErrrorMetric.WithLabelValues(name).Inc()
+		clusterCheckErrrorMetric.WithLabelValues(name).Set(1)
 		klog.V(2).Infof("%s failed: %s", name, err)
 	} else {
+		clusterCheckErrrorMetric.WithLabelValues(name).Set(0)
 		klog.V(2).Infof("%s passed", name)
 	}
 	clusterCheckTotalMetric.WithLabelValues(name).Inc()
@@ -265,9 +266,10 @@ func (c *vSphereProblemDetectorController) runSingleNodeSingleCheck(checkContext
 	err := check.CheckNode(checkContext, node, vm)
 	if err != nil {
 		res.Error = err
-		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Inc()
+		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Set(1)
 		klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
 	} else {
+		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Set(0)
 		klog.V(2).Infof("%s:%s passed", name, node.Name)
 	}
 	nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()

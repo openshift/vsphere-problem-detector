@@ -23,10 +23,10 @@ var (
 		[]string{checkNameLabel},
 	)
 
-	clusterCheckErrrorMetric = metrics.NewCounterVec(
-		&metrics.CounterOpts{
-			Name:           "vsphere_cluster_check_errors_total",
-			Help:           "Number of failed vSphere cluster-level checks performed by vsphere-problem-detector.",
+	clusterCheckErrrorMetric = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Name:           "vsphere_cluster_check_errors",
+			Help:           "Indicates failing vSphere cluster-level checks performed by vsphere-problem-detector. Value of 1 means - a particular check is failing.",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{checkNameLabel},
@@ -41,10 +41,10 @@ var (
 		[]string{checkNameLabel, nodeNameLabel},
 	)
 
-	nodeCheckErrrorMetric = metrics.NewCounterVec(
-		&metrics.CounterOpts{
-			Name:           "vsphere_node_check_errors_total",
-			Help:           "Number of failed vSphere node-level checks performed by vsphere-problem-detector.",
+	nodeCheckErrrorMetric = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Name:           "vsphere_node_check_errors",
+			Help:           "Indicates failing vSphere node-level checks performed by vsphere-problem-detector. Value of 1 means - a particular check is failing on a node.",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{checkNameLabel, nodeNameLabel},
