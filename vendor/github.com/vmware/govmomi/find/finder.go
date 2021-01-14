@@ -38,14 +38,24 @@ type Finder struct {
 	folders *object.DatacenterFolders
 }
 
-func NewFinder(client *vim25.Client, all bool) *Finder {
+func NewFinder(client *vim25.Client, all ...bool) *Finder {
+	props := false
+	if len(all) == 1 {
+		props = all[0]
+	}
+
 	f := &Finder{
 		client: client,
 		si:     object.NewSearchIndex(client),
 		r: recurser{
 			Collector: property.DefaultCollector(client),
-			All:       all,
+			All:       props,
 		},
+	}
+
+	if len(all) == 0 {
+		// attempt to avoid SetDatacenter() requirement
+		f.dc, _ = f.DefaultDatacenter(context.Background())
 	}
 
 	return f
@@ -253,7 +263,7 @@ func (f *Finder) managedObjectList(ctx context.Context, path string, tl bool, in
 		fn = f.dcReference
 	}
 
-	if len(path) == 0 {
+	if path == "" {
 		path = "."
 	}
 

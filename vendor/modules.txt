@@ -188,7 +188,7 @@ github.com/spf13/cobra
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.6.1
 ## explicit
-# github.com/vmware/govmomi v0.20.3
+# github.com/vmware/govmomi v0.23.1
 ## explicit
 github.com/vmware/govmomi
 github.com/vmware/govmomi/find
@@ -203,6 +203,7 @@ github.com/vmware/govmomi/pbm/methods
 github.com/vmware/govmomi/pbm/types
 github.com/vmware/govmomi/property
 github.com/vmware/govmomi/session
+github.com/vmware/govmomi/session/keepalive
 github.com/vmware/govmomi/sts
 github.com/vmware/govmomi/sts/internal
 github.com/vmware/govmomi/task
@@ -282,7 +283,6 @@ golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
 ## explicit
-golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
 # golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 ## explicit
