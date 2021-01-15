@@ -78,6 +78,8 @@ type NodeCheck interface {
 	// Multiple CheckNodes can run in parallel, each for a different node!
 	CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error
 	// Finish current round of checks. The check may report metrics here.
+	// Since it's called serially for all checks, it should not perform too
+	// expensive calculations. In addition, it must respect ctx.Context.
 	// It will be called after all CheckNode calls finish.
-	FinishCheck()
+	FinishCheck(ctx *CheckContext)
 }

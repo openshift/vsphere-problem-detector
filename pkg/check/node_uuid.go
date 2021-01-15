@@ -32,6 +32,6 @@ func (c *CheckNodeDiskUUID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.V
 	return nil
 }
 
-func (c *CheckNodeDiskUUID) FinishCheck() {
+func (c *CheckNodeDiskUUID) FinishCheck(ctx *CheckContext) {
 	return
 }
