@@ -162,7 +162,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	if err := checkRunner.Wait(ctx); err != nil {
 		return 0, err
 	}
-	c.finishNodeChecks()
+	c.finishNodeChecks(checkContext)
 
 	klog.V(4).Infof("All checks complete")
 
@@ -275,10 +275,10 @@ func (c *vSphereProblemDetectorController) runSingleNodeSingleCheck(checkContext
 	resultCollector.AddResult(res)
 }
 
-func (c *vSphereProblemDetectorController) finishNodeChecks() {
+func (c *vSphereProblemDetectorController) finishNodeChecks(ctx *check.CheckContext) {
 	for i := range c.nodeChecks {
 		check := c.nodeChecks[i]
-		check.FinishCheck()
+		check.FinishCheck(ctx)
 	}
 }
 

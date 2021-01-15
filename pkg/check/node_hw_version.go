@@ -60,7 +60,7 @@ func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *m
 	return nil
 }
 
-func (c *CollectNodeHWVersion) FinishCheck() {
+func (c *CollectNodeHWVersion) FinishCheck(ctx *CheckContext) {
 	c.hwVersionsLock.Lock()
 	defer c.hwVersionsLock.Unlock()
 

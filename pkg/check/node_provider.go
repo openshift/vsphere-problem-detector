@@ -29,6 +29,6 @@ func (c *CheckNodeProviderID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo
 	return nil
 }
 
-func (c *CheckNodeProviderID) FinishCheck() {
+func (c *CheckNodeProviderID) FinishCheck(ctx *CheckContext) {
 	return
 }

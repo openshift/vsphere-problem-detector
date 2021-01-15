@@ -80,7 +80,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 	return nil
 }
 
-func (c *CollectNodeESXiVersion) FinishCheck() {
+func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	// Count the versions
 	versions := make(map[string]int)
 	for _, version := range c.esxiVersions {
