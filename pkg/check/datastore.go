@@ -6,10 +6,15 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/property"
+
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/pbm"
 	"github.com/vmware/govmomi/pbm/types"
 	"github.com/vmware/govmomi/view"
+	"github.com/vmware/govmomi/vim25/mo"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
 )
@@ -17,11 +22,13 @@ import (
 const (
 	dsParameter            = "datastore"
 	storagePolicyParameter = "storagepolicyname"
-
 	// Maximum length of <cluster-id>-dynamic-pvc-<uuid> for volume names.
 	// Kubernetes uses 90, https://github.com/kubernetes/kubernetes/blob/93d288e2a47fa6d497b50d37c8b3a04e91da4228/pkg/volume/vsphere_volume/vsphere_volume_util.go#L100
 	// Using 63 to work around https://bugzilla.redhat.com/show_bug.cgi?id=1926943
-	maxVolumeName = 63
+	maxVolumeName         = 63
+	dataCenterType        = "Datacenter"
+	DatastoreInfoProperty = "info"
+	SummaryProperty       = "summary"
 )
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
@@ -47,7 +54,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 		for k, v := range sc.Parameters {
 			switch strings.ToLower(k) {
 			case dsParameter:
-				if err := checkDataStore(v, infra); err != nil {
+				if err := checkDataStore(ctx, v, infra); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
 				}
@@ -95,7 +102,7 @@ func CheckDefaultDatastore(ctx *CheckContext) error {
 	}
 
 	dsName := ctx.VMConfig.Workspace.DefaultDatastore
-	if err := checkDataStore(dsName, infra); err != nil {
+	if err := checkDataStore(ctx, dsName, infra); err != nil {
 		return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
 	}
 	return nil
@@ -124,7 +131,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 
 	var errs []error
 	for _, dataStore := range dataStores {
-		err := checkDataStore(dataStore, infrastructure)
+		err := checkDataStore(ctx, dataStore, infrastructure)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
 		}
@@ -231,7 +238,7 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	return c.RetrieveContent(tctx, []types.PbmProfileId{{UniqueId: name}})
 }
 
-func checkDataStore(dsName string, infrastructure *configv1.Infrastructure) error {
+func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.Infrastructure) error {
 	clusterID := infrastructure.Status.InfrastructureName
 	volumeName := generateVolumeName(clusterID, "pvc-00000000-0000-0000-0000-000000000000", maxVolumeName)
 	fullVolumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s.vmdk", dsName, volumeName)
@@ -239,7 +246,102 @@ func checkDataStore(dsName string, infrastructure *configv1.Infrastructure) erro
 	if err := checkVolumeName(fullVolumeName); err != nil {
 		return fmt.Errorf("datastore %s: %s", dsName, err)
 	}
+	if err := checkForDatastoreCluster(ctx, dsName); err != nil {
+		return err
+	}
 	return nil
+}
+
+func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	finder := find.NewFinder(ctx.VMClient, false)
+	datacenters, err := finder.DatacenterList(tctx, "*")
+	if err != nil {
+		klog.Errorf("error listing datacenters: %v", err)
+		return nil
+	}
+	workspaceDC := ctx.VMConfig.Workspace.Datacenter
+	var matchingDC *object.Datacenter
+	for _, dc := range datacenters {
+		if dc.Name() == workspaceDC {
+			matchingDC = dc
+		}
+	}
+
+	// lets fetch the datastore
+	finder = find.NewFinder(ctx.VMClient, false)
+	finder.SetDatacenter(matchingDC)
+	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	ds, err := finder.Datastore(tctx, dataStoreName)
+	if err != nil {
+		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
+		return nil
+	}
+
+	var dsMo mo.Datastore
+	pc := property.DefaultCollector(matchingDC.Client())
+	properties := []string{DatastoreInfoProperty, SummaryProperty}
+	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	err = pc.RetrieveOne(tctx, ds.Reference(), properties, &dsMo)
+
+	if err != nil {
+		klog.Errorf("error getting properties of datastore %s: %v", dataStoreName, err)
+		return nil
+	}
+
+	// list datastore cluster
+	m := view.NewManager(ctx.VMClient)
+	kind := []string{"StoragePod"}
+	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
+	if err != nil {
+		klog.Errorf("error listing datastore cluster: %+v", err)
+		return nil
+	}
+	var content []mo.StoragePod
+	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
+	if err != nil {
+		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
+		return nil
+	}
+	err = v.Destroy(tctx)
+	if err != nil {
+		klog.Errorf("error destroying view: %+v", err)
+		return nil
+	}
+	for _, ds := range content {
+		for _, child := range ds.Folder.ChildEntity {
+			tDS, err := getDatastore(ctx, child)
+			if err != nil {
+				klog.Errorf("fetching datastore %s failed: %v", child.String(), err)
+				continue
+			}
+			if tDS.Summary.Url == dsMo.Summary.Url {
+				return fmt.Errorf("datastore %s is part of %s datastore cluster", tDS.Summary.Name, ds.Summary.Name)
+			}
+		}
+	}
+	klog.V(2).Infof("Checked datastore %s for SRDS - no problems found", dataStoreName)
+	return nil
+}
+
+func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
+	var dsMo mo.Datastore
+	pc := property.DefaultCollector(ctx.VMClient)
+	properties := []string{DatastoreInfoProperty, SummaryProperty}
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	err := pc.RetrieveOne(tctx, ref, properties, &dsMo)
+	if err != nil {
+		return dsMo, err
+	}
+	return dsMo, nil
 }
 
 func checkVolumeName(name string) error {
