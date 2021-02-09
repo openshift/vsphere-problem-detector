@@ -22,9 +22,11 @@ var (
 		"CheckTaskPermissions":   CheckTaskPermissions,
 		"ClusterInfo":            CollectClusterInfo,
 		"CheckFolderPermissions": CheckFolderPermissions,
-		"CheckDefaultDatastore":  CheckDefaultDatastore,
-		"CheckPVs":               CheckPVs,
-		"CheckStorageClasses":    CheckStorageClasses,
+		// TODO: Fix shortening of volume names in Kubernetes and enable these checks.
+		// See https://bugzilla.redhat.com/show_bug.cgi?id=1926943 for details.
+		// "CheckDefaultDatastore":  CheckDefaultDatastore,
+		// "CheckPVs":            CheckPVs,
+		// "CheckStorageClasses": CheckStorageClasses,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
