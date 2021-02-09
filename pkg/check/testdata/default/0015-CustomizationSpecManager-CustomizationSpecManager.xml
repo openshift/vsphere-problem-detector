@@ -8,28 +8,28 @@
         <description></description>
         <type>Linux</type>
         <changeVersion>1569965707</changeVersion>
-        <lastUpdateTime>2021-01-08T17:08:20.679746468+01:00</lastUpdateTime>
+        <lastUpdateTime>2021-02-09T22:59:58.204412854-05:00</lastUpdateTime>
       </CustomizationSpecInfo>
       <CustomizationSpecInfo>
         <name>vcsim-linux-static</name>
         <description></description>
         <type>Linux</type>
         <changeVersion>1569969598</changeVersion>
-        <lastUpdateTime>2021-01-08T17:08:20.679746894+01:00</lastUpdateTime>
+        <lastUpdateTime>2021-02-09T22:59:58.204413134-05:00</lastUpdateTime>
       </CustomizationSpecInfo>
       <CustomizationSpecInfo>
         <name>vcsim-windows-static</name>
         <description></description>
         <type>Windows</type>
         <changeVersion>1569978029</changeVersion>
-        <lastUpdateTime>2021-01-08T17:08:20.679747102+01:00</lastUpdateTime>
+        <lastUpdateTime>2021-02-09T22:59:58.204413314-05:00</lastUpdateTime>
       </CustomizationSpecInfo>
       <CustomizationSpecInfo>
         <name>vcsim-windows-domain</name>
         <description></description>
         <type>Windows</type>
         <changeVersion>1569970234</changeVersion>
-        <lastUpdateTime>2021-01-08T17:08:20.679747246+01:00</lastUpdateTime>
+        <lastUpdateTime>2021-02-09T22:59:58.204413454-05:00</lastUpdateTime>
       </CustomizationSpecInfo>
     </val>
   </propSet>

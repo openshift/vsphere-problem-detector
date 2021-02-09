@@ -81,16 +81,19 @@
   <propSet>
     <name>datastore</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
-      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-824089577@folder-5</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_1-392731591@folder-5</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_3-206027153@folder-5</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_2-363093114@folder-5</ManagedObjectReference>
     </val>
   </propSet>
   <propSet>
     <name>network</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
       <ManagedObjectReference type="Network">network-7</ManagedObjectReference>
-      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-11</ManagedObjectReference>
-      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-13</ManagedObjectReference>
-      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-13</ManagedObjectReference>
+      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-12</ManagedObjectReference>
+      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-14</ManagedObjectReference>
+      <ManagedObjectReference type="DistributedVirtualPortgroup">dvportgroup-14</ManagedObjectReference>
     </val>
   </propSet>
   <propSet>

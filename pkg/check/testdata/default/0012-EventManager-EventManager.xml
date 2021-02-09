@@ -354,6 +354,36 @@
         <fullFormat>Completed the relocation of the virtual machine</fullFormat>
       </eventInfo>
       <eventInfo>
+        <key>CustomizationFailed</key>
+        <description>An error occurred during customization</description>
+        <category>info</category>
+        <formatOnDatacenter></formatOnDatacenter>
+        <formatOnComputeResource></formatOnComputeResource>
+        <formatOnHost></formatOnHost>
+        <formatOnVm></formatOnVm>
+        <fullFormat>An error occurred during customization on VM {{.Vm.Name}}</fullFormat>
+      </eventInfo>
+      <eventInfo>
+        <key>CustomizationStartedEvent</key>
+        <description>Started customization</description>
+        <category>info</category>
+        <formatOnDatacenter></formatOnDatacenter>
+        <formatOnComputeResource></formatOnComputeResource>
+        <formatOnHost></formatOnHost>
+        <formatOnVm></formatOnVm>
+        <fullFormat>Started customization of VM {{.Vm.Name}}</fullFormat>
+      </eventInfo>
+      <eventInfo>
+        <key>CustomizationSucceeded</key>
+        <description>Customization succeeded</description>
+        <category>info</category>
+        <formatOnDatacenter></formatOnDatacenter>
+        <formatOnComputeResource></formatOnComputeResource>
+        <formatOnHost></formatOnHost>
+        <formatOnVm></formatOnVm>
+        <fullFormat>Customization of VM {{.Vm.Name}} succeeded</fullFormat>
+      </eventInfo>
+      <eventInfo>
         <key>DrsVmMigratedEvent</key>
         <description>DRS VM migrated</description>
         <category>info</category>

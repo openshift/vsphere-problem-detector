@@ -1,7 +1,12 @@
 This directory contains simulated vCenter environment, generated using vcsim and govc v0.23.1.
 
-# Run vcsim with default settings, i.e. with 1 host and 2 VMs
-$ vcsim -tls=false
+# Run vcsim with following settings.
+$ vcsim -tls=false -dc 2 -folder 1 -ds 4 -pod 1 -nsx 2 -pool 2 -app 1 -vm 2
+
+# this will give us a datastore cluster with no datastores inside it.
+# we should move some datastores in the datastore cluster
+$ govc object.mv /DC0/datastore/LocalDS_2 /DC0/datastore/DC0_POD0
+$ govc object.mv /DC0/datastore/LocalDS_3 /DC0/datastore/DC0_POD0
 
 # Save simulated objects in a directory.
 $ govc object.save

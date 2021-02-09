@@ -7,8 +7,8 @@
       <propertyCollector type="PropertyCollector">propertyCollector</propertyCollector>
       <viewManager type="ViewManager">ViewManager</viewManager>
       <about>
-        <name>VMware vCenter Server (govmomi simulator)</name>
-        <fullName>VMware vCenter Server 6.5.0 build-5973321</fullName>
+        <name>VMware vCenter Server</name>
+        <fullName>VMware vCenter Server 6.5.0 build-5973321 (govmomi simulator)</fullName>
         <vendor>VMware, Inc.</vendor>
         <version>6.5.0</version>
         <build>5973321</build>

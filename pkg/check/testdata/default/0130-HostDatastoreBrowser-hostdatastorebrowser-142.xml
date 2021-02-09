@@ -1,0 +1,14 @@
+<ObjectContent>
+  <obj type="HostDatastoreBrowser">hostdatastorebrowser-142</obj>
+  <propSet>
+    <name>datastore</name>
+    <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC1-LocalDS_0-236535740@folder-66</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC1-LocalDS_1-057538539@folder-66</ManagedObjectReference>
+    </val>
+  </propSet>
+  <propSet>
+    <name>supportedType</name>
+    <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfFileQuery"></val>
+  </propSet>
+</ObjectContent>
