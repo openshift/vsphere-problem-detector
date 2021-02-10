@@ -9,7 +9,6 @@ import (
 	"github.com/vmware/govmomi/property"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/pbm"
 	"github.com/vmware/govmomi/pbm/types"
 	"github.com/vmware/govmomi/view"
@@ -65,7 +64,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 			}
 		}
 	}
-	klog.V(4).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
+	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
 	return JoinErrors(errs)
 }
 
@@ -254,14 +253,10 @@ func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.I
 func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 	matchingDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
+		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
 		return err
 	}
-	// lets fetch the datastore
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(matchingDC)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	ds, err := finder.Datastore(tctx, dataStoreName)
+	ds, err := getDataStoreByName(ctx, dataStoreName, matchingDC)
 	if err != nil {
 		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
 		return nil
@@ -270,7 +265,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 	var dsMo mo.Datastore
 	pc := property.DefaultCollector(matchingDC.Client())
 	properties := []string{DatastoreInfoProperty, SummaryProperty}
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	err = pc.RetrieveOne(tctx, ds.Reference(), properties, &dsMo)
 	if err != nil {
@@ -318,21 +313,8 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 			}
 		}
 	}
-	klog.V(2).Infof("Checked datastore %s for SRDS - no problems found", dataStoreName)
+	klog.V(4).Infof("Checked datastore %s for SRDS - no problems found", dataStoreName)
 	return nil
-}
-
-func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-	pc := property.DefaultCollector(ctx.VMClient)
-	properties := []string{DatastoreInfoProperty, SummaryProperty}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	err := pc.RetrieveOne(tctx, ref, properties, &dsMo)
-	if err != nil {
-		return dsMo, err
-	}
-	return dsMo, nil
 }
 
 func checkVolumeName(name string) error {

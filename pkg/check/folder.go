@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
@@ -22,11 +21,7 @@ func CheckFolderPermissions(ctx *CheckContext) error {
 		return err
 	}
 
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(dc)
-	ds, err := finder.Datastore(tctx, ctx.VMConfig.Workspace.DefaultDatastore)
+	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, dc)
 	if err != nil {
 		return fmt.Errorf("failed to access datastore %s: %s", ctx.VMConfig.Workspace.DefaultDatastore, err)
 	}
@@ -103,15 +98,4 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 		klog.V(2).Infof("CheckFolderPermissions: found %d files in datastore %s at path %s", len(i.File), dsName, path)
 	}
 	return nil
-}
-
-func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	dc, err := finder.Datacenter(tctx, dcName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
-	}
-	return dc, nil
 }
