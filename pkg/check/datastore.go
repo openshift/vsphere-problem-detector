@@ -17,6 +17,11 @@ import (
 const (
 	dsParameter            = "datastore"
 	storagePolicyParameter = "storagepolicyname"
+
+	// Maximum length of <cluster-id>-dynamic-pvc-<uuid> for volume names.
+	// Kubernetes uses 90, https://github.com/kubernetes/kubernetes/blob/93d288e2a47fa6d497b50d37c8b3a04e91da4228/pkg/volume/vsphere_volume/vsphere_volume_util.go#L100
+	// Using 63 to work around https://bugzilla.redhat.com/show_bug.cgi?id=1926943
+	maxVolumeName = 63
 )
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
@@ -228,9 +233,10 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 
 func checkDataStore(dsName string, infrastructure *configv1.Infrastructure) error {
 	clusterID := infrastructure.Status.InfrastructureName
-	volumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s-dynamic-pvc-00000000-0000-0000-0000-000000000000.vmdk", dsName, clusterID)
-	klog.V(4).Infof("Checking data store %q with potential volume Name %s", dsName, volumeName)
-	if err := checkVolumeName(volumeName); err != nil {
+	volumeName := generateVolumeName(clusterID, "pvc-00000000-0000-0000-0000-000000000000", maxVolumeName)
+	fullVolumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s.vmdk", dsName, volumeName)
+	klog.V(4).Infof("Checking data store %q with potential volume Name %s", dsName, fullVolumeName)
+	if err := checkVolumeName(fullVolumeName); err != nil {
 		return fmt.Errorf("datastore %s: %s", dsName, err)
 	}
 	return nil
@@ -256,4 +262,21 @@ func systemdEscape(path string) (string, error) {
 	}
 	escapedPath := strings.TrimSpace(string(out))
 	return escapedPath, nil
+}
+
+// Copied from https://github.com/kubernetes/kubernetes/blob/93d288e2a47fa6d497b50d37c8b3a04e91da4228/pkg/volume/util/util.go#L230
+// GenerateVolumeName returns a PV name with clusterName prefix. The function
+// should be used to generate a name of GCE PD or Cinder volume. It basically
+// adds "<clusterName>-dynamic-" before the PV name, making sure the resulting
+// string fits given length and cuts "dynamic" if not.
+func generateVolumeName(clusterName, pvName string, maxLength int) string {
+	prefix := clusterName + "-dynamic"
+	pvLen := len(pvName)
+
+	// cut the "<clusterName>-dynamic" to fit full pvName into maxLength
+	// +1 for the '-' dash
+	if pvLen+1+len(prefix) > maxLength {
+		prefix = prefix[:maxLength-pvLen-1]
+	}
+	return prefix + "-" + pvName
 }
