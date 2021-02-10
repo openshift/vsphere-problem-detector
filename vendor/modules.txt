@@ -199,12 +199,17 @@ github.com/vmware/govmomi/lookup/methods
 github.com/vmware/govmomi/lookup/types
 github.com/vmware/govmomi/nfc
 github.com/vmware/govmomi/object
+github.com/vmware/govmomi/ovf
 github.com/vmware/govmomi/pbm
 github.com/vmware/govmomi/pbm/methods
 github.com/vmware/govmomi/pbm/types
 github.com/vmware/govmomi/property
 github.com/vmware/govmomi/session
 github.com/vmware/govmomi/session/keepalive
+github.com/vmware/govmomi/simulator
+github.com/vmware/govmomi/simulator/esx
+github.com/vmware/govmomi/simulator/internal
+github.com/vmware/govmomi/simulator/vpx
 github.com/vmware/govmomi/sts
 github.com/vmware/govmomi/sts/internal
 github.com/vmware/govmomi/task
@@ -283,7 +288,6 @@ golang.org/x/net/websocket
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
-## explicit
 golang.org/x/sync/singleflight
 # golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 ## explicit
