@@ -259,7 +259,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 	ds, err := getDataStoreByName(ctx, dataStoreName, matchingDC)
 	if err != nil {
 		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
-		return nil
+		return err
 	}
 
 	var dsMo mo.Datastore

@@ -17,8 +17,13 @@ var (
 	}{
 		{
 			name:        "short datastore",
-			datastore:   "short",
+			datastore:   "LocalDS_1",
 			expectError: false,
+		},
+		{
+			name:        "non-existant datastore",
+			datastore:   "foobar", // this datastore does not exist and hence should result in error
+			expectError: true,
 		},
 		{
 			name:        "long datastore",
@@ -121,7 +126,7 @@ func TestCheckPVs(t *testing.T) {
 		}{
 			{
 				name:        "short datastore",
-				datastore:   "short",
+				datastore:   "LocalDS_1",
 				expectError: false,
 			},
 			{
