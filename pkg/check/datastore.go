@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -66,7 +65,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 			}
 		}
 	}
-	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
+	klog.V(4).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
 	return JoinErrors(errs)
 }
 
@@ -253,26 +252,14 @@ func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.I
 }
 
 func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	datacenters, err := finder.DatacenterList(tctx, "*")
+	matchingDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
-		klog.Errorf("error listing datacenters: %v", err)
-		return nil
+		return err
 	}
-	workspaceDC := ctx.VMConfig.Workspace.Datacenter
-	var matchingDC *object.Datacenter
-	for _, dc := range datacenters {
-		if dc.Name() == workspaceDC {
-			matchingDC = dc
-		}
-	}
-
 	// lets fetch the datastore
-	finder = find.NewFinder(ctx.VMClient, false)
+	finder := find.NewFinder(ctx.VMClient, false)
 	finder.SetDatacenter(matchingDC)
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	ds, err := finder.Datastore(tctx, dataStoreName)
 	if err != nil {
@@ -286,7 +273,6 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	err = pc.RetrieveOne(tctx, ds.Reference(), properties, &dsMo)
-
 	if err != nil {
 		klog.Errorf("error getting properties of datastore %s: %v", dataStoreName, err)
 		return nil
@@ -302,23 +288,28 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 		klog.Errorf("error listing datastore cluster: %+v", err)
 		return nil
 	}
+	defer func() {
+		v.Destroy(tctx)
+	}()
+
 	var content []mo.StoragePod
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
 	if err != nil {
 		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
+		// it is possible that we do not actually have permission to fetch datastore clusters
+		// in which case rather than throwing an error - we will silently return nil, so as
+		// we don't trigger unnecessary alerts.
 		return nil
 	}
-	err = v.Destroy(tctx)
-	if err != nil {
-		klog.Errorf("error destroying view: %+v", err)
-		return nil
-	}
+
 	for _, ds := range content {
 		for _, child := range ds.Folder.ChildEntity {
 			tDS, err := getDatastore(ctx, child)
 			if err != nil {
+				// we may not have permissions to fetch unrelated datastores in OCP
+				// and hence we are going to ignore the error.
 				klog.Errorf("fetching datastore %s failed: %v", child.String(), err)
 				continue
 			}

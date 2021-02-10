@@ -17,16 +17,14 @@ import (
 // The check tries to list "kubevols/". It tolerates when it's missing,
 // it will be created by OCP on the first provisioning.
 func CheckFolderPermissions(ctx *CheckContext) error {
+	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
+	if err != nil {
+		return err
+	}
+
 	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	finder := find.NewFinder(ctx.VMClient, false)
-	dc, err := finder.Datacenter(tctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return fmt.Errorf("failed to access datacenter %s: %s", ctx.VMConfig.Workspace.Datacenter, err)
-	}
-
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
 	finder.SetDatacenter(dc)
 	ds, err := finder.Datastore(tctx, ctx.VMConfig.Workspace.DefaultDatastore)
 	if err != nil {
@@ -105,4 +103,15 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 		klog.V(2).Infof("CheckFolderPermissions: found %d files in datastore %s at path %s", len(i.File), dsName, path)
 	}
 	return nil
+}
+
+func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+	finder := find.NewFinder(ctx.VMClient, false)
+	dc, err := finder.Datacenter(tctx, dcName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
+	}
+	return dc, nil
 }
