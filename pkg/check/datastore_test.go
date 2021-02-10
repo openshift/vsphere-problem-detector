@@ -17,8 +17,13 @@ var (
 	}{
 		{
 			name:        "short datastore",
-			datastore:   "short",
+			datastore:   "LocalDS_1",
 			expectError: false,
+		},
+		{
+			name:        "non-existant datastore",
+			datastore:   "foobar", // this datastore does not exist and hence should result in error
+			expectError: true,
 		},
 		{
 			name:        "long datastore",
@@ -29,6 +34,16 @@ var (
 			name:        "short datastore with too many dashes",
 			datastore:   "0-1-2-3-4-5-6-7-8-9", // 265 characters in the escaped path
 			expectError: true,
+		},
+		{
+			name:        "datastore which is part of a datastore cluster",
+			datastore:   "/DC0/datastore/DC0_POD0/LocalDS_2",
+			expectError: true,
+		},
+		{
+			name:        "datastore which is not part of a datastore cluster",
+			datastore:   "/DC0/datastore/LocalDS_1",
+			expectError: false,
 		},
 	}
 )
@@ -103,7 +118,31 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 }
 
 func TestCheckPVs(t *testing.T) {
-	for _, test := range datastoreTests {
+	var (
+		pvWithDatastoreNames = []struct {
+			name        string
+			datastore   string
+			expectError bool
+		}{
+			{
+				name:        "short datastore",
+				datastore:   "LocalDS_1",
+				expectError: false,
+			},
+			{
+				name:        "long datastore",
+				datastore:   "01234567890123456789012345678901234567890123456789", // 269 characters in the escaped path
+				expectError: true,
+			},
+			{
+				name:        "short datastore with too many dashes",
+				datastore:   "0-1-2-3-4-5-6-7-8-9", // 265 characters in the escaped path
+				expectError: true,
+			},
+		}
+	)
+
+	for _, test := range pvWithDatastoreNames {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			kubeClient := &fakeKubeClient{

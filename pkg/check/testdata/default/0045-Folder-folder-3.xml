@@ -73,10 +73,12 @@
   <propSet>
     <name>childEntity</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
-      <ManagedObjectReference type="VirtualMachine">vm-57</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-60</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-63</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-66</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-152</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-155</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-158</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-161</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-164</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-167</ManagedObjectReference>
     </val>
   </propSet>
   <propSet>
@@ -152,10 +154,12 @@
   <propSet>
     <name>childEntity</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
-      <ManagedObjectReference type="VirtualMachine">vm-57</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-60</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-63</ManagedObjectReference>
-      <ManagedObjectReference type="VirtualMachine">vm-66</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-152</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-155</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-158</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-161</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-164</ManagedObjectReference>
+      <ManagedObjectReference type="VirtualMachine">vm-167</ManagedObjectReference>
     </val>
   </propSet>
 </ObjectContent>

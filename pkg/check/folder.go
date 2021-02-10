@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
@@ -17,18 +16,12 @@ import (
 // The check tries to list "kubevols/". It tolerates when it's missing,
 // it will be created by OCP on the first provisioning.
 func CheckFolderPermissions(ctx *CheckContext) error {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	dc, err := finder.Datacenter(tctx, ctx.VMConfig.Workspace.Datacenter)
+	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
-		return fmt.Errorf("failed to access datacenter %s: %s", ctx.VMConfig.Workspace.Datacenter, err)
+		return err
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder.SetDatacenter(dc)
-	ds, err := finder.Datastore(tctx, ctx.VMConfig.Workspace.DefaultDatastore)
+	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, dc)
 	if err != nil {
 		return fmt.Errorf("failed to access datastore %s: %s", ctx.VMConfig.Workspace.DefaultDatastore, err)
 	}

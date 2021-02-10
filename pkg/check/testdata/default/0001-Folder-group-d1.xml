@@ -84,6 +84,7 @@
     <name>childEntity</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
       <ManagedObjectReference type="Datacenter">datacenter-2</ManagedObjectReference>
+      <ManagedObjectReference type="Folder">folder-58</ManagedObjectReference>
     </val>
   </propSet>
   <propSet>
@@ -170,6 +171,7 @@
     <name>childEntity</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
       <ManagedObjectReference type="Datacenter">datacenter-2</ManagedObjectReference>
+      <ManagedObjectReference type="Folder">folder-58</ManagedObjectReference>
     </val>
   </propSet>
 </ObjectContent>
