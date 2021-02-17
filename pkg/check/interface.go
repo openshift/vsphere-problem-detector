@@ -23,8 +23,10 @@ var (
 		"ClusterInfo":            CollectClusterInfo,
 		"CheckFolderPermissions": CheckFolderPermissions,
 		"CheckDefaultDatastore":  CheckDefaultDatastore,
-		"CheckPVs":               CheckPVs,
-		"CheckStorageClasses":    CheckStorageClasses,
+		// PV checks are disabled because existing PVs can't be fixed easily and it could be problematic
+		// to keep alerting on them
+		// "CheckPVs":               CheckPVs,
+		"CheckStorageClasses": CheckStorageClasses,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
