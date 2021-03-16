@@ -50,6 +50,8 @@ const (
 	cloudCredentialsSecretName = "vsphere-cloud-credentials"
 	// TODO: make it configurable?
 	parallelVSPhereCalls = 10
+	// Size of golang channel buffer
+	channelBufferSize = 100
 )
 
 var (
@@ -151,7 +153,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		KubeClient: c,
 	}
 
-	checkRunner := NewCheckThreadPool(parallelVSPhereCalls)
+	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 	resultCollector := NewResultsCollector()
 	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
@@ -251,9 +253,7 @@ func (c *vSphereProblemDetectorController) enqueueSingleNodeChecks(checkContext 
 		for i := range c.nodeChecks {
 			check := c.nodeChecks[i]
 			klog.V(4).Infof("Adding node check %s:%s", node.Name, check.Name())
-			checkRunner.RunGoroutine(checkContext.Context, func() {
-				c.runSingleNodeSingleCheck(checkContext, resultCollector, node, vm, check)
-			})
+			c.runSingleNodeSingleCheck(checkContext, resultCollector, node, vm, check)
 		}
 	})
 }

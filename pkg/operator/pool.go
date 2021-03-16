@@ -16,9 +16,9 @@ type CheckThreadPool struct {
 }
 
 // Creates a new CheckThreadPool with given max. number of goroutines.
-func NewCheckThreadPool(parallelism int) *CheckThreadPool {
+func NewCheckThreadPool(parallelism int, channelBufferSize int) *CheckThreadPool {
 	pool := &CheckThreadPool{
-		workCh: make(chan func(), 100),
+		workCh: make(chan func(), channelBufferSize),
 	}
 
 	for i := 0; i < parallelism; i++ {
