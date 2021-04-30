@@ -111,24 +111,32 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return err
 	}
 
+	availableCnd := operatorapi.OperatorCondition{
+		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
+		Status: operatorapi.ConditionTrue,
+	}
+
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
 	if platformSupported && time.Now().After(c.nextCheck) {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
-			// This sets VSphereProblemDetectorControllerDegraded condition
-			return err
+			// Do not return the error, it would degrade the whole cluster.
+			// Keep the operator Available=true, but give it a specific message.
+			klog.Errorf("Failed to run checks: %s", err)
+			// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
+			availableCnd.Message = err.Error()
+			availableCnd.Reason = "SyncFailed"
+			syncErrrorMetric.Set(1)
+		} else {
+			syncErrrorMetric.Set(0)
 		}
+
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
 		queueKey := syncCtx.QueueKey()
 		time.AfterFunc(delay, func() {
 			queue.Add(queueKey)
 		})
-	}
-
-	availableCnd := operatorapi.OperatorCondition{
-		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
-		Status: operatorapi.ConditionTrue,
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
