@@ -141,12 +141,15 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 			availableCnd.Reason = "SyncFailed"
 			syncErrrorMetric.Set(1)
 		} else {
+			// Clean the error metric
 			syncErrrorMetric.Set(0)
 		}
 
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
 		queueKey := syncCtx.QueueKey()
+		c.nextCheck = c.lastCheck.Add(delay)
+		klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
 		time.AfterFunc(delay, func() {
 			queue.Add(queueKey)
 		})
@@ -162,9 +165,13 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 }
 
 func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
+	// pre-calculate exp. backoff on error
+	nextErrorDelay := c.backoff.Step()
+	c.lastCheck = time.Now()
+
 	vmConfig, vmClient, err := c.connect(ctx)
 	if err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 
 	checkContext := &check.CheckContext{
@@ -178,12 +185,12 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	resultCollector := NewResultsCollector()
 	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 	c.finishNodeChecks(checkContext)
 
@@ -192,11 +199,10 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	results, checksFailed := resultCollector.Collect()
 	c.reportResults(results)
 	c.lastResults = results
-	c.lastCheck = time.Now()
 	var nextDelay time.Duration
 	if checksFailed {
 		// Use exponential backoff
-		nextDelay = c.backoff.Step()
+		nextDelay = nextErrorDelay
 	} else {
 		// Reset the backoff on success
 		c.backoff = defaultBackoff
@@ -204,8 +210,6 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		// (i.e. retry as slow as allowed).
 		nextDelay = defaultBackoff.Cap
 	}
-	c.nextCheck = c.lastCheck.Add(nextDelay)
-	klog.V(2).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
 	return nextDelay, nil
 }
 
