@@ -51,7 +51,7 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 			defer cleanup()
 
 			// Set HW version of the first VM. Leave the other VMs with the default version (vmx-13).
-			node := &kubeClient.nodes[0]
+			node := kubeClient.nodes[0]
 			err = customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
 				ExtraConfig: []types.BaseOptionValue{
 					&types.OptionValue{
@@ -72,11 +72,11 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 			}
 
 			for _, node := range kubeClient.nodes {
-				vm, err := getVM(ctx, &node)
+				vm, err := getVM(ctx, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
-				err = check.CheckNode(ctx, &node, vm)
+				err = check.CheckNode(ctx, node, vm)
 				if err != nil {
 					t.Errorf("Unexpected error on node %s: %s", node.Name, err)
 				}

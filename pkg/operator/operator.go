@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
+	storagelister "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -26,6 +27,9 @@ type vSphereProblemDetectorController struct {
 	kubeClient           kubernetes.Interface
 	infraLister          infralister.InfrastructureLister
 	secretLister         corelister.SecretLister
+	nodeLister           corelister.NodeLister
+	pvLister             corelister.PersistentVolumeLister
+	scLister             storagelister.StorageClassLister
 	cloudConfigMapLister corelister.ConfigMapLister
 	eventRecorder        events.Recorder
 
@@ -75,10 +79,16 @@ func NewVSphereProblemDetectorController(
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
 	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
+	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
+	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
 	c := &vSphereProblemDetectorController{
 		operatorClient:       operatorClient,
 		kubeClient:           kubeClient,
 		secretLister:         secretInformer.Lister(),
+		nodeLister:           nodeInformer.Lister(),
+		pvLister:             pvInformer.Lister(),
+		scLister:             scInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
 		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
@@ -90,6 +100,9 @@ func NewVSphereProblemDetectorController(
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
 		secretInformer.Informer(),
+		nodeInformer.Informer(),
+		pvInformer.Informer(),
+		scInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
 	).ToController(controllerName, c.eventRecorder)
 }
@@ -235,7 +248,7 @@ func (c *vSphereProblemDetectorController) enqueueNodeChecks(checkContext *check
 	}
 
 	for i := range nodes {
-		node := &nodes[i]
+		node := nodes[i]
 		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
 	}
 	return nil

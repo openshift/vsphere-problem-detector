@@ -63,11 +63,11 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			}
 
 			for _, node := range kubeClient.nodes {
-				vm, err := getVM(ctx, &node)
+				vm, err := getVM(ctx, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
-				err = check.CheckNode(ctx, &node, vm)
+				err = check.CheckNode(ctx, node, vm)
 				if err != nil {
 					t.Errorf("Unexpected error on node %s: %s", node.Name, err)
 				}

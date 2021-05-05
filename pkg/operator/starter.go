@@ -29,7 +29,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	if err != nil {
 		return err
 	}
-	kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace)
+	kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace, "")
 
 	csiConfigClient, err := operatorclient.NewForConfig(controllerConfig.KubeConfig)
 	if err != nil {

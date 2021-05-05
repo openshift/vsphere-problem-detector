@@ -102,9 +102,9 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 
 type fakeKubeClient struct {
 	infrastructure *ocpv1.Infrastructure
-	nodes          []v1.Node
-	storageClasses []storagev1.StorageClass
-	pvs            []v1.PersistentVolume
+	nodes          []*v1.Node
+	storageClasses []*storagev1.StorageClass
+	pvs            []*v1.PersistentVolume
 }
 
 var _ KubeClient = &fakeKubeClient{}
@@ -113,20 +113,20 @@ func (f *fakeKubeClient) GetInfrastructure(ctx context.Context) (*ocpv1.Infrastr
 	return f.infrastructure, nil
 }
 
-func (f *fakeKubeClient) ListNodes(ctx context.Context) ([]v1.Node, error) {
+func (f *fakeKubeClient) ListNodes(ctx context.Context) ([]*v1.Node, error) {
 	return f.nodes, nil
 }
 
-func (f *fakeKubeClient) ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error) {
+func (f *fakeKubeClient) ListStorageClasses(ctx context.Context) ([]*storagev1.StorageClass, error) {
 	return f.storageClasses, nil
 }
 
-func (f *fakeKubeClient) ListPVs(ctx context.Context) ([]v1.PersistentVolume, error) {
+func (f *fakeKubeClient) ListPVs(ctx context.Context) ([]*v1.PersistentVolume, error) {
 	return f.pvs, nil
 }
 
-func node(name string, modifiers ...func(*v1.Node)) v1.Node {
-	n := v1.Node{
+func node(name string, modifiers ...func(*v1.Node)) *v1.Node {
+	n := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -135,7 +135,7 @@ func node(name string, modifiers ...func(*v1.Node)) v1.Node {
 		},
 	}
 	for _, modifier := range modifiers {
-		modifier(&n)
+		modifier(n)
 	}
 	return n
 }
@@ -146,8 +146,8 @@ func withProviderID(id string) func(*v1.Node) {
 	}
 }
 
-func defaultNodes() []v1.Node {
-	nodes := []v1.Node{}
+func defaultNodes() []*v1.Node {
+	nodes := []*v1.Node{}
 	for _, vm := range defaultVMs {
 		node := node(vm.name, withProviderID("vsphere://"+vm.uuid))
 		nodes = append(nodes, node)

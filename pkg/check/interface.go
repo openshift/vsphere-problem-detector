@@ -45,11 +45,11 @@ type KubeClient interface {
 	// GetInfrastructure returns current Infrastructure instance.
 	GetInfrastructure(ctx context.Context) (*ocpv1.Infrastructure, error)
 	// ListNodes returns list of all nodes in the cluster.
-	ListNodes(ctx context.Context) ([]v1.Node, error)
+	ListNodes(ctx context.Context) ([]*v1.Node, error)
 	// ListStorageClasses returns list of all storage classes in the cluster.
-	ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error)
+	ListStorageClasses(ctx context.Context) ([]*storagev1.StorageClass, error)
 	// ListPVs returns list of all PVs in the cluster.
-	ListPVs(ctx context.Context) ([]v1.PersistentVolume, error)
+	ListPVs(ctx context.Context) ([]*v1.PersistentVolume, error)
 }
 
 type CheckContext struct {
