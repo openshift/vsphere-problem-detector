@@ -84,7 +84,7 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 			kubeClient := &fakeKubeClient{
 				infrastructure: infrastructure(),
 				nodes:          defaultNodes(),
-				storageClasses: []storagev1.StorageClass{
+				storageClasses: []*storagev1.StorageClass{
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: test.name,
@@ -148,7 +148,7 @@ func TestCheckPVs(t *testing.T) {
 			kubeClient := &fakeKubeClient{
 				infrastructure: infrastructure(),
 				nodes:          defaultNodes(),
-				pvs: []v1.PersistentVolume{
+				pvs: []*v1.PersistentVolume{
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: test.name,

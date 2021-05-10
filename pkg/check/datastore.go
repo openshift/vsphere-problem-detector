@@ -43,7 +43,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 
 	var errs []error
 	for i := range scs {
-		sc := &scs[i]
+		sc := scs[i]
 		if sc.Provisioner != "kubernetes.io/vsphere-volume" {
 			klog.V(4).Infof("Skipping storage class %s: not a vSphere class", sc.Name)
 			continue
@@ -77,7 +77,7 @@ func CheckPVs(ctx *CheckContext) error {
 		return err
 	}
 	for i := range pvs {
-		pv := &pvs[i]
+		pv := pvs[i]
 		if pv.Spec.VsphereVolume == nil {
 			continue
 		}

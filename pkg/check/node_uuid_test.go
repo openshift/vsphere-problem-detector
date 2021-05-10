@@ -43,7 +43,7 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 			defer cleanup()
 
 			// Set VM disk.enableUUID
-			node := &kubeClient.nodes[0]
+			node := kubeClient.nodes[0]
 			err = customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
 				ExtraConfig: []types.BaseOptionValue{
 					&types.OptionValue{
@@ -60,7 +60,7 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 			}
 
 			// Act
-			err = check.CheckNode(ctx, &kubeClient.nodes[0], vm)
+			err = check.CheckNode(ctx, kubeClient.nodes[0], vm)
 
 			// Assert
 			if err != nil && !test.expectError {

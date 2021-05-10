@@ -9,7 +9,7 @@ import (
 func TestCheckNodeProviderID(t *testing.T) {
 	tests := []struct {
 		name        string
-		node        v1.Node
+		node        *v1.Node
 		expectError bool
 	}{
 		{
@@ -34,7 +34,7 @@ func TestCheckNodeProviderID(t *testing.T) {
 			}
 
 			kubeClient := &fakeKubeClient{
-				nodes: []v1.Node{test.node},
+				nodes: []*v1.Node{test.node},
 			}
 			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
 			if err != nil {
@@ -43,7 +43,7 @@ func TestCheckNodeProviderID(t *testing.T) {
 			defer cleanup()
 
 			// Act
-			err = check.CheckNode(ctx, &test.node, nil)
+			err = check.CheckNode(ctx, test.node, nil)
 
 			// Assert
 			if err != nil && !test.expectError {
