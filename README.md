@@ -11,11 +11,3 @@ This operator is deployed automatically in OpenShift clusters when it runs on vS
 ```sh
 $ ./vsphere-problem-detector start -v 5 --kubeconfig=$KUBECONFIG --namespace=openshift-cluster-storage-operator
 ```
-
-
-## WIP
-
-This is work-in-progress operator.
-
-Until proper `VSphereProblemDetector` CRD is introduced in openshift/api, `ClusterCSIDriver` CR with name `csi.ovirt.org` is used!
-Results of checks are rendered as `clustercsidriver.Status.Conditions` instead of proper fields.
