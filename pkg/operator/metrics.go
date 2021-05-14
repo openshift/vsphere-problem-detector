@@ -8,6 +8,7 @@ import (
 const (
 	checkNameLabel = "check"
 	nodeNameLabel  = "node"
+	reasonLabel    = "reason"
 )
 
 // This file contains operator metrics, especially status of each check.
@@ -50,12 +51,13 @@ var (
 		[]string{checkNameLabel, nodeNameLabel},
 	)
 
-	syncErrrorMetric = metrics.NewGauge(
+	syncErrrorMetric = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
 			Name:           "vsphere_sync_errors",
 			Help:           "Indicates failing vSphere problem detector sync error. Value 1 means that the last sync failed.",
 			StabilityLevel: metrics.ALPHA,
 		},
+		[]string{reasonLabel},
 	)
 )
 
