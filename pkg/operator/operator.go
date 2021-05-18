@@ -40,6 +40,7 @@ type vSphereProblemDetectorController struct {
 	lastCheck   time.Time
 	nextCheck   time.Time
 	lastResults []checkResult
+	lastError   error
 	backoff     wait.Backoff
 }
 
@@ -133,18 +134,11 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if platformSupported && time.Now().After(c.nextCheck) {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
-			// Do not return the error, it would degrade the whole cluster.
-			// Keep the operator Available=true, but give it a specific message.
 			klog.Errorf("Failed to run checks: %s", err)
-			// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
-			availableCnd.Message = err.Error()
-			availableCnd.Reason = "SyncFailed"
-			syncErrrorMetric.Set(1)
-		} else {
-			// Clean the error metric
-			syncErrrorMetric.Set(0)
 		}
-
+		// Do not return the error, it would degrade the whole cluster.
+		// Remember the error and put it in Available condition message below.
+		c.lastError = err
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
 		queueKey := syncCtx.QueueKey()
@@ -153,6 +147,18 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		time.AfterFunc(delay, func() {
 			queue.Add(queueKey)
 		})
+	}
+
+	if c.lastError != nil {
+		// Make sure the last error is saved into Available condition on every sync call,
+		// not only when the check actually run.
+		// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
+		availableCnd.Message = c.lastError.Error()
+		availableCnd.Reason = "SyncFailed"
+		syncErrrorMetric.Set(1)
+	} else {
+		// Clean the error metric
+		syncErrrorMetric.Set(0)
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
