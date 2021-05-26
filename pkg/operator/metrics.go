@@ -49,6 +49,14 @@ var (
 		},
 		[]string{checkNameLabel, nodeNameLabel},
 	)
+
+	syncErrrorMetric = metrics.NewGauge(
+		&metrics.GaugeOpts{
+			Name:           "vsphere_sync_errors",
+			Help:           "Indicates failing vSphere problem detector sync error. Value 1 means that the last sync failed.",
+			StabilityLevel: metrics.ALPHA,
+		},
+	)
 )
 
 func init() {
@@ -56,4 +64,5 @@ func init() {
 	legacyregistry.MustRegister(clusterCheckErrrorMetric)
 	legacyregistry.MustRegister(nodeCheckTotalMetric)
 	legacyregistry.MustRegister(nodeCheckErrrorMetric)
+	legacyregistry.MustRegister(syncErrrorMetric)
 }

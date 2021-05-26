@@ -7,7 +7,7 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 var _ check.KubeClient = &vSphereProblemDetectorController{}
@@ -18,26 +18,14 @@ func (c *vSphereProblemDetectorController) GetInfrastructure(ctx context.Context
 	return c.infraLister.Get(infrastructureName)
 }
 
-func (c *vSphereProblemDetectorController) ListNodes(ctx context.Context) ([]v1.Node, error) {
-	list, err := c.kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return list.Items, nil
+func (c *vSphereProblemDetectorController) ListNodes(ctx context.Context) ([]*v1.Node, error) {
+	return c.nodeLister.List(labels.Everything())
 }
 
-func (c *vSphereProblemDetectorController) ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error) {
-	list, err := c.kubeClient.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return list.Items, nil
+func (c *vSphereProblemDetectorController) ListStorageClasses(ctx context.Context) ([]*storagev1.StorageClass, error) {
+	return c.scLister.List(labels.Everything())
 }
 
-func (c *vSphereProblemDetectorController) ListPVs(ctx context.Context) ([]v1.PersistentVolume, error) {
-	list, err := c.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return list.Items, nil
+func (c *vSphereProblemDetectorController) ListPVs(ctx context.Context) ([]*v1.PersistentVolume, error) {
+	return c.pvLister.List(labels.Everything())
 }

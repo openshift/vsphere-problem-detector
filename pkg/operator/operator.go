@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
+	storagelister "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -26,6 +27,9 @@ type vSphereProblemDetectorController struct {
 	kubeClient           kubernetes.Interface
 	infraLister          infralister.InfrastructureLister
 	secretLister         corelister.SecretLister
+	nodeLister           corelister.NodeLister
+	pvLister             corelister.PersistentVolumeLister
+	scLister             storagelister.StorageClassLister
 	cloudConfigMapLister corelister.ConfigMapLister
 	eventRecorder        events.Recorder
 
@@ -36,6 +40,7 @@ type vSphereProblemDetectorController struct {
 	lastCheck   time.Time
 	nextCheck   time.Time
 	lastResults []checkResult
+	lastError   error
 	backoff     wait.Backoff
 }
 
@@ -75,10 +80,16 @@ func NewVSphereProblemDetectorController(
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
 	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
+	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
+	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
 	c := &vSphereProblemDetectorController{
 		operatorClient:       operatorClient,
 		kubeClient:           kubeClient,
 		secretLister:         secretInformer.Lister(),
+		nodeLister:           nodeInformer.Lister(),
+		pvLister:             pvInformer.Lister(),
+		scLister:             scInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
 		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
@@ -90,6 +101,9 @@ func NewVSphereProblemDetectorController(
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
 		secretInformer.Informer(),
+		nodeInformer.Informer(),
+		pvInformer.Informer(),
+		scInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
 	).ToController(controllerName, c.eventRecorder)
 }
@@ -111,24 +125,40 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return err
 	}
 
+	availableCnd := operatorapi.OperatorCondition{
+		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
+		Status: operatorapi.ConditionTrue,
+	}
+
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
 	if platformSupported && time.Now().After(c.nextCheck) {
 		delay, err := c.runChecks(ctx)
 		if err != nil {
-			// This sets VSphereProblemDetectorControllerDegraded condition
-			return err
+			klog.Errorf("Failed to run checks: %s", err)
 		}
+		// Do not return the error, it would degrade the whole cluster.
+		// Remember the error and put it in Available condition message below.
+		c.lastError = err
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
 		queueKey := syncCtx.QueueKey()
+		c.nextCheck = c.lastCheck.Add(delay)
+		klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
 		time.AfterFunc(delay, func() {
 			queue.Add(queueKey)
 		})
 	}
 
-	availableCnd := operatorapi.OperatorCondition{
-		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
-		Status: operatorapi.ConditionTrue,
+	if c.lastError != nil {
+		// Make sure the last error is saved into Available condition on every sync call,
+		// not only when the check actually run.
+		// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
+		availableCnd.Message = c.lastError.Error()
+		availableCnd.Reason = "SyncFailed"
+		syncErrrorMetric.Set(1)
+	} else {
+		// Clean the error metric
+		syncErrrorMetric.Set(0)
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
@@ -141,9 +171,13 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 }
 
 func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
+	// pre-calculate exp. backoff on error
+	nextErrorDelay := c.backoff.Step()
+	c.lastCheck = time.Now()
+
 	vmConfig, vmClient, err := c.connect(ctx)
 	if err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 
 	checkContext := &check.CheckContext{
@@ -157,12 +191,12 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	resultCollector := NewResultsCollector()
 	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
-		return 0, err
+		return nextErrorDelay, err
 	}
 	c.finishNodeChecks(checkContext)
 
@@ -171,11 +205,10 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	results, checksFailed := resultCollector.Collect()
 	c.reportResults(results)
 	c.lastResults = results
-	c.lastCheck = time.Now()
 	var nextDelay time.Duration
 	if checksFailed {
 		// Use exponential backoff
-		nextDelay = c.backoff.Step()
+		nextDelay = nextErrorDelay
 	} else {
 		// Reset the backoff on success
 		c.backoff = defaultBackoff
@@ -183,8 +216,6 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		// (i.e. retry as slow as allowed).
 		nextDelay = defaultBackoff.Cap
 	}
-	c.nextCheck = c.lastCheck.Add(nextDelay)
-	klog.V(2).Infof("Scheduled the next check in %s (%s)", nextDelay, c.nextCheck)
 	return nextDelay, nil
 }
 
@@ -227,7 +258,7 @@ func (c *vSphereProblemDetectorController) enqueueNodeChecks(checkContext *check
 	}
 
 	for i := range nodes {
-		node := &nodes[i]
+		node := nodes[i]
 		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
 	}
 	return nil
