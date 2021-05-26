@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/vmware/govmomi/property"
+	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/component-base/metrics"
+	"k8s.io/component-base/metrics/legacyregistry"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/govmomi/pbm"
@@ -27,7 +30,49 @@ const (
 	dataCenterType        = "Datacenter"
 	DatastoreInfoProperty = "info"
 	SummaryProperty       = "summary"
+
+	dataStoreType = "type"
 )
+
+var (
+	dataStoreTypesMetric = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Name:           "vsphere_datastore_total",
+			Help:           "Number of DataStores used by the cluster.",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{dataStoreType},
+	)
+)
+
+func init() {
+	legacyregistry.MustRegister(dataStoreTypesMetric)
+}
+
+// dataStoreTypeCollector collects types of each datastore inspected by CheckStorageClasses
+// for metrics.
+type dataStoreTypeCollector map[string]string
+
+func (d dataStoreTypeCollector) addDataStore(name, dsType string) {
+	if d == nil {
+		return
+	}
+	// Make the datastore type case insensitive, just in case vCenter API changes.
+	dsType = strings.ToLower(dsType)
+	d[name] = dsType
+}
+
+func (d dataStoreTypeCollector) getDataStoreTypeCount() map[string]int {
+	if d == nil {
+		return nil
+	}
+
+	m := make(map[string]int)
+	for _, dsType := range d {
+		m[dsType]++
+	}
+	return m
+}
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
 func CheckStorageClasses(ctx *CheckContext) error {
@@ -42,6 +87,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 	}
 
 	var errs []error
+	dsTypes := make(dataStoreTypeCollector)
 	for i := range scs {
 		sc := scs[i]
 		if sc.Provisioner != "kubernetes.io/vsphere-volume" {
@@ -52,18 +98,29 @@ func CheckStorageClasses(ctx *CheckContext) error {
 		for k, v := range sc.Parameters {
 			switch strings.ToLower(k) {
 			case dsParameter:
-				if err := checkDataStore(ctx, v, infra); err != nil {
+				if err := checkDataStore(ctx, v, infra, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
 				}
 			case storagePolicyParameter:
-				if err := checkStoragePolicy(ctx, v, infra); err != nil {
+				if err := checkStoragePolicy(ctx, v, infra, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+				}
+			default:
+				// There is neither datastore: nor storagepolicyname: in the StorageClass,
+				// check the default datastore and collect its type.
+				if err := checkDefaultDatastoreWithDSType(ctx, dsTypes); err != nil {
+					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
 				}
 			}
 		}
 	}
+
+	for dsType, count := range dsTypes.getDataStoreTypeCount() {
+		dataStoreTypesMetric.WithLabelValues(dsType).Set(float64(count))
+	}
+
 	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
 	return JoinErrors(errs)
 }
@@ -94,20 +151,24 @@ func CheckPVs(ctx *CheckContext) error {
 
 // CheckDefaultDatastore checks that the default data store name in vSphere config file is short enough.
 func CheckDefaultDatastore(ctx *CheckContext) error {
+	return checkDefaultDatastoreWithDSType(ctx, nil)
+}
+
+func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) error {
 	infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
 	if err != nil {
 		return err
 	}
 
 	dsName := ctx.VMConfig.Workspace.DefaultDatastore
-	if err := checkDataStore(ctx, dsName, infra); err != nil {
+	if err := checkDataStore(ctx, dsName, infra, dsTypes); err != nil {
 		return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
 	}
 	return nil
 }
 
 // checkStoragePolicy lists all compatible datastores and checks their names are short.
-func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *configv1.Infrastructure) error {
+func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
 	klog.V(4).Infof("Checking storage policy %s", policyName)
 
 	pbm, err := getPolicy(ctx, policyName)
@@ -129,7 +190,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 
 	var errs []error
 	for _, dataStore := range dataStores {
-		err := checkDataStore(ctx, dataStore, infrastructure)
+		err := checkDataStore(ctx, dataStore, infrastructure, dsTypes)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
 		}
@@ -236,21 +297,22 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	return c.RetrieveContent(tctx, []types.PbmProfileId{{UniqueId: name}})
 }
 
-func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.Infrastructure) error {
+func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
 	clusterID := infrastructure.Status.InfrastructureName
 	volumeName := generateVolumeName(clusterID, "pvc-00000000-0000-0000-0000-000000000000", maxVolumeName)
 	fullVolumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s.vmdk", dsName, volumeName)
 	klog.V(4).Infof("Checking data store %q with potential volume Name %s", dsName, fullVolumeName)
+	var errs []error
 	if err := checkVolumeName(fullVolumeName); err != nil {
-		return fmt.Errorf("datastore %s: %s", dsName, err)
+		errs = append(errs, fmt.Errorf("datastore %s: %s", dsName, err))
 	}
-	if err := checkForDatastoreCluster(ctx, dsName); err != nil {
-		return err
+	if err := checkForDatastoreCluster(ctx, dsName, dsTypes); err != nil {
+		errs = append(errs, err)
 	}
-	return nil
+	return errors.NewAggregate(errs)
 }
 
-func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
+func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string, dsTypes dataStoreTypeCollector) error {
 	matchingDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
 		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
@@ -272,6 +334,11 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string) error {
 		klog.Errorf("error getting properties of datastore %s: %v", dataStoreName, err)
 		return nil
 	}
+
+	// Collect DS type
+	dsType := dsMo.Summary.Type
+	klog.V(4).Infof("Datastore %s is of type %s", dataStoreName, dsType)
+	dsTypes.addDataStore(dataStoreName, dsType)
 
 	// list datastore cluster
 	m := view.NewManager(ctx.VMClient)

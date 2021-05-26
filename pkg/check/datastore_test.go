@@ -2,11 +2,14 @@ package check
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/component-base/metrics/legacyregistry"
 )
 
 var (
@@ -14,14 +17,16 @@ var (
 		name        string
 		datastore   string
 		expectError bool
+		dsType      string
 	}{
 		{
 			name:        "short datastore",
 			datastore:   "LocalDS_1",
 			expectError: false,
+			dsType:      "OTHER",
 		},
 		{
-			name:        "non-existant datastore",
+			name:        "non-existing datastore",
 			datastore:   "foobar", // this datastore does not exist and hence should result in error
 			expectError: true,
 		},
@@ -39,11 +44,13 @@ var (
 			name:        "datastore which is part of a datastore cluster",
 			datastore:   "/DC0/datastore/DC0_POD0/LocalDS_2",
 			expectError: true,
+			dsType:      "OTHER",
 		},
 		{
 			name:        "datastore which is not part of a datastore cluster",
 			datastore:   "/DC0/datastore/LocalDS_1",
 			expectError: false,
+			dsType:      "OTHER",
 		},
 	}
 )
@@ -52,6 +59,7 @@ func TestCheckDefaultDatastore(t *testing.T) {
 	for _, test := range datastoreTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
+			dataStoreTypesMetric.Reset()
 			kubeClient := &fakeKubeClient{
 				infrastructure: infrastructure(),
 				nodes:          defaultNodes(),
@@ -103,6 +111,9 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 			}
 			defer cleanup()
 
+			// Reset metrics from previous tests. Note: the tests can't run in parallel!
+			legacyregistry.Reset()
+
 			// Act
 			err = CheckStorageClasses(ctx)
 
@@ -112,6 +123,20 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 			}
 			if err == nil && test.expectError {
 				t.Errorf("Expected error, got none")
+			}
+			if test.dsType != "" {
+
+				// UUID & version is hardcoded in the simulator, github.com/vmware/govmomi/simulator/vpx/service_content.go
+				expectedMetricFmt := `
+					# HELP vsphere_datastore_total [ALPHA] Number of DataStores used by the cluster.
+					# TYPE vsphere_datastore_total gauge
+					vsphere_datastore_total{type="%s"} 1
+`
+				expectedMetric := fmt.Sprintf(expectedMetricFmt, strings.ToLower(test.dsType))
+
+				if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(expectedMetric), "vsphere_datastore_total"); err != nil {
+					t.Errorf("Unexpected metric: %s", err)
+				}
 			}
 		})
 	}
