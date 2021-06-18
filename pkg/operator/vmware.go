@@ -38,7 +38,23 @@ func (c *vSphereProblemDetectorController) connect(ctx context.Context) (*vspher
 
 	vmClient, err := c.newClient(ctx, cfg, username, password)
 	if err != nil {
+		if strings.Index(username, "\n") != -1 {
+			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(1)
+			return nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
+		} else {
+			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(0)
+		}
+
+		if strings.Index(password, "\n") != -1 {
+			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(1)
+			return nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
+		} else {
+			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(0)
+		}
+		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(1)
 		return nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+	} else {
+		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
 	return cfg, vmClient.Client, nil

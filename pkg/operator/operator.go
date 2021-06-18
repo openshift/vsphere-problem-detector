@@ -155,10 +155,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
 		availableCnd.Message = c.lastError.Error()
 		availableCnd.Reason = "SyncFailed"
-		syncErrrorMetric.Set(1)
+		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	} else {
 		// Clean the error metric
-		syncErrrorMetric.Set(0)
+		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
