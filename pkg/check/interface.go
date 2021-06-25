@@ -33,6 +33,7 @@ var (
 		&CheckNodeProviderID{},
 		&CollectNodeHWVersion{},
 		&CollectNodeESXiVersion{},
+		&CheckNodeDiskPerf{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
