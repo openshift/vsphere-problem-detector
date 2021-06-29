@@ -158,7 +158,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	} else {
 		// Clean the error metric
-		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
+		syncErrrorMetric.WithLabelValues("SyncError").Set(0)
 	}
 
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
