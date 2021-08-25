@@ -20,12 +20,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -52,6 +54,11 @@ var (
 	SessionIdleTimeout time.Duration
 
 	sessionMutex sync.Mutex
+
+	// secureCookies enables Set-Cookie.Secure=true
+	// We can't do this by default as simulator.Service defaults to no TLS by default and
+	// Go's cookiejar does not send Secure cookies unless the URL scheme is https.
+	secureCookies = os.Getenv("VCSIM_SECURE_COOKIES") == "true"
 )
 
 func createSession(ctx *Context, name string, locale string) types.UserSession {
@@ -181,7 +188,7 @@ func (s *SessionManager) Logout(ctx *Context, _ *types.Logout) soap.HasFault {
 			continue // don't unregister the PropertyCollector singleton
 		}
 		if _, ok := obj.(RegisterObject); ok {
-			ctx.Map.Remove(ref) // Remove RegisterObject handlers
+			ctx.Map.Remove(ctx, ref) // Remove RegisterObject handlers
 		}
 	}
 
@@ -274,18 +281,6 @@ func (s *SessionManager) AcquireGenericServiceTicket(ticket *types.AcquireGeneri
 	}
 }
 
-// internalContext is the session for use by the in-memory client (Service.RoundTrip)
-var internalContext = &Context{
-	Context: context.Background(),
-	Session: &Session{
-		UserSession: types.UserSession{
-			Key: uuid.New().String(),
-		},
-		Registry: NewRegistry(),
-	},
-	Map: Map,
-}
-
 var invalidLogin = Fault("Login failure", new(types.InvalidLogin))
 
 // Context provides per-request Session management.
@@ -358,8 +353,10 @@ func (c *Context) SetSession(session Session, login bool) {
 
 	if login {
 		http.SetCookie(c.res, &http.Cookie{
-			Name:  soap.SessionCookieName,
-			Value: session.Key,
+			Name:     soap.SessionCookieName,
+			Value:    session.Key,
+			Secure:   secureCookies,
+			HttpOnly: true,
 		})
 
 		c.postEvent(&types.UserLoginSessionEvent{
@@ -374,13 +371,15 @@ func (c *Context) SetSession(session Session, login bool) {
 }
 
 // WithLock holds a lock for the given object while then given function is run.
+// It will skip locking if this context already holds the given object's lock.
 func (c *Context) WithLock(obj mo.Reference, f func()) {
-	if c.Caller != nil && *c.Caller == obj.Reference() {
-		// Internal method invocation, obj is already locked
-		f()
-		return
-	}
-	Map.WithLock(obj, f)
+	// TODO: This is not always going to be correct. An object should
+	// really be locked by the registry that "owns it", which is not always
+	// Map. This function will need to take the Registry as an additional
+	// argument to accomplish this.
+	// Basic mutex locking will work even if obj doesn't belong to Map, but
+	// if obj implements sync.Locker, that custom locking will not be used.
+	Map.WithLock(c, obj, f)
 }
 
 // postEvent wraps EventManager.PostEvent for internal use, with a lock on the EventManager.
