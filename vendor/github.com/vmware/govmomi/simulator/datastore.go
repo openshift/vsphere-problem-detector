@@ -17,6 +17,10 @@ limitations under the License.
 package simulator
 
 import (
+	"net/url"
+	"os"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/vmware/govmomi/object"
@@ -28,6 +32,25 @@ import (
 
 type Datastore struct {
 	mo.Datastore
+}
+
+func (ds *Datastore) model(m *Model) error {
+	info := ds.Info.GetDatastoreInfo()
+	u, _ := url.Parse(info.Url)
+	if u.Scheme == "ds" {
+		// rewrite saved vmfs path to a local temp dir
+		u.Path = path.Clean(u.Path)
+		parent := strings.ReplaceAll(path.Dir(u.Path), "/", "_")
+		name := strings.ReplaceAll(path.Base(u.Path), ":", "_")
+
+		dir, err := m.createTempDir(parent, name)
+		if err != nil {
+			return err
+		}
+
+		info.Url = dir
+	}
+	return nil
 }
 
 func parseDatastorePath(dsPath string) (*object.DatastorePath, types.BaseMethodFault) {
@@ -43,7 +66,7 @@ func parseDatastorePath(dsPath string) (*object.DatastorePath, types.BaseMethodF
 func (ds *Datastore) RefreshDatastore(*types.RefreshDatastore) soap.HasFault {
 	r := &methods.RefreshDatastoreBody{}
 
-	err := ds.stat()
+	_, err := os.Stat(ds.Info.GetDatastoreInfo().Url)
 	if err != nil {
 		r.Fault_ = Fault(err.Error(), &types.HostConfigFault{})
 		return r
@@ -51,11 +74,7 @@ func (ds *Datastore) RefreshDatastore(*types.RefreshDatastore) soap.HasFault {
 
 	info := ds.Info.GetDatastoreInfo()
 
-	now := time.Now()
-
-	info.Timestamp = &now
-	info.MaxMemoryFileSize = info.FreeSpace
-	info.MaxFileSize = info.FreeSpace
+	info.Timestamp = types.NewTime(time.Now())
 
 	return r
 }
@@ -71,9 +90,9 @@ func (ds *Datastore) DestroyTask(ctx *Context, req *types.Destroy_Task) soap.Has
 
 		for _, mount := range ds.Host {
 			host := Map.Get(mount.Key).(*HostSystem)
-			Map.RemoveReference(host, &host.Datastore, ds.Self)
+			Map.RemoveReference(ctx, host, &host.Datastore, ds.Self)
 			parent := hostParent(&host.HostSystem)
-			Map.RemoveReference(parent, &parent.Datastore, ds.Self)
+			Map.RemoveReference(ctx, parent, &parent.Datastore, ds.Self)
 		}
 
 		p, _ := asFolderMO(Map.Get(*ds.Parent))
@@ -84,7 +103,7 @@ func (ds *Datastore) DestroyTask(ctx *Context, req *types.Destroy_Task) soap.Has
 
 	return &methods.Destroy_TaskBody{
 		Res: &types.Destroy_TaskResponse{
-			Returnval: task.Run(),
+			Returnval: task.Run(ctx),
 		},
 	}
 }
