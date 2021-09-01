@@ -17,7 +17,7 @@ import (
 type CollectNodeESXiVersion struct {
 	// map ESXI host name ("host-12345", not hostname nor IP address!) -> version
 	// Version "" means that a CheckNode call is retrieving it right now.
-	esxiVersions     map[string]string
+	esxiVersions     map[string]esxiVersionInfo
 	esxiVersionsLock sync.Mutex
 }
 
@@ -30,9 +30,14 @@ var (
 			Help:           "Number of ESXi hosts with given version.",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{versionLabel},
+		[]string{versionLabel, apiVersionLabel},
 	)
 )
+
+type esxiVersionInfo struct {
+	version    string
+	apiVersion string
+}
 
 func init() {
 	legacyregistry.MustRegister(esxiVersionMetric)
@@ -43,7 +48,7 @@ func (c *CollectNodeESXiVersion) Name() string {
 }
 
 func (c *CollectNodeESXiVersion) StartCheck() error {
-	c.esxiVersions = make(map[string]string)
+	c.esxiVersions = make(map[string]esxiVersionInfo)
 	return nil
 }
 
@@ -64,7 +69,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 	defer cancel()
 	var o mo.HostSystem
 
-	err := host.Properties(tctx, host.Reference(), []string{"name", "config.product.version"}, &o)
+	err := host.Properties(tctx, host.Reference(), []string{"name", "config.product"}, &o)
 	if err != nil {
 		return fmt.Errorf("failed to load ESXi host %s for node %s: %s", hostName, node.Name, err)
 	}
@@ -73,23 +78,24 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 		return fmt.Errorf("error getting ESXi host version for node %s: host.config is nil", node.Name)
 	}
 	version := o.Config.Product.Version
+	apiVersion := o.Config.Product.ApiVersion
 	realHostName := o.Name // "10.0.0.2" or other user-friendly name of the host.
 	klog.V(2).Infof("Node %s runs on host %s (%s) with ESXi version: %s", node.Name, hostName, realHostName, version)
-	c.setHostVersion(hostName, version)
+	c.setHostVersion(hostName, version, apiVersion)
 
 	return nil
 }
 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	// Count the versions
-	versions := make(map[string]int)
-	for _, version := range c.esxiVersions {
-		versions[version]++
+	versions := make(map[esxiVersionInfo]int)
+	for _, esxiVersion := range c.esxiVersions {
+		versions[esxiVersion]++
 	}
 
 	// Report the count
-	for version, count := range versions {
-		esxiVersionMetric.WithLabelValues(version).Set(float64(count))
+	for esxiVersion, count := range versions {
+		esxiVersionMetric.WithLabelValues(esxiVersion.version, esxiVersion.apiVersion).Set(float64(count))
 	}
 	return
 }
@@ -102,20 +108,21 @@ func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 func (c *CollectNodeESXiVersion) checkOrMarkHostProcessing(hostName string) (string, bool) {
 	c.esxiVersionsLock.Lock()
 	defer c.esxiVersionsLock.Unlock()
+	var esxiVersion string
 	ver, found := c.esxiVersions[hostName]
-	if ver == "" {
-		ver = "<in progress>"
+	if ver.version == "" {
+		esxiVersion = "<in progress>"
 	}
 	if found {
-		return ver, true
+		return ver.version, true
 	}
 	// Mark the hostName as in progress
-	c.esxiVersions[hostName] = ""
-	return ver, false
+	c.esxiVersions[hostName] = esxiVersionInfo{"", ""}
+	return esxiVersion, false
 }
 
-func (c *CollectNodeESXiVersion) setHostVersion(hostName string, version string) {
+func (c *CollectNodeESXiVersion) setHostVersion(hostName string, version string, apiVersion string) {
 	c.esxiVersionsLock.Lock()
 	defer c.esxiVersionsLock.Unlock()
-	c.esxiVersions[hostName] = version
+	c.esxiVersions[hostName] = esxiVersionInfo{version, apiVersion}
 }
