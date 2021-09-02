@@ -3,8 +3,8 @@ package check
 import (
 	"context"
 	"fmt"
-	"sync"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
@@ -15,10 +15,6 @@ import (
 
 // CollectNodeESXiVersion emits metric with version of each ESXi host that runs at least a single VM with node.
 type CollectNodeESXiVersion struct {
-	// map ESXI host name ("host-12345", not hostname nor IP address!) -> version
-	// Version "" means that a CheckNode call is retrieving it right now.
-	esxiVersions     map[string]esxiVersionInfo
-	esxiVersionsLock sync.Mutex
 }
 
 var _ NodeCheck = &CollectNodeESXiVersion{}
@@ -34,11 +30,6 @@ var (
 	)
 )
 
-type esxiVersionInfo struct {
-	version    string
-	apiVersion string
-}
-
 func init() {
 	legacyregistry.MustRegister(esxiVersionMetric)
 }
@@ -48,7 +39,6 @@ func (c *CollectNodeESXiVersion) Name() string {
 }
 
 func (c *CollectNodeESXiVersion) StartCheck() error {
-	c.esxiVersions = make(map[string]esxiVersionInfo)
 	return nil
 }
 
@@ -58,7 +48,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 		return fmt.Errorf("error getting ESXi host for node %s: vm.runtime.host is empty", node.Name)
 	}
 	hostName := hostRef.Value
-	if ver, processed := c.checkOrMarkHostProcessing(hostName); processed {
+	if ver, processed := util.VSphereClusterInfo.MarkHostForProcessing(hostName); processed {
 		klog.V(4).Infof("Node %s runs on cached ESXi host %s: %s", node.Name, hostName, ver)
 		return nil
 	}
@@ -81,48 +71,21 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 	apiVersion := o.Config.Product.ApiVersion
 	realHostName := o.Name // "10.0.0.2" or other user-friendly name of the host.
 	klog.V(2).Infof("Node %s runs on host %s (%s) with ESXi version: %s", node.Name, hostName, realHostName, version)
-	c.setHostVersion(hostName, version, apiVersion)
+	util.VSphereClusterInfo.SetHostVersion(hostName, version, apiVersion)
 
 	return nil
 }
 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
-	// Count the versions
-	versions := make(map[esxiVersionInfo]int)
-	for _, esxiVersion := range c.esxiVersions {
-		versions[esxiVersion]++
+	versions := make(map[util.EsxiVersionInfo]int)
+	esxiVersions := util.VSphereClusterInfo.GetHostVersions()
+	for _, v := range esxiVersions {
+		versions[v]++
 	}
 
 	// Report the count
-	for esxiVersion, count := range versions {
-		esxiVersionMetric.WithLabelValues(esxiVersion.version, esxiVersion.apiVersion).Set(float64(count))
+	for v, count := range versions {
+		esxiVersionMetric.WithLabelValues(v.Version, v.ApiVersion).Set(float64(count))
 	}
 	return
-}
-
-// checkOrMarkHostProcessing returns true, if the host version is already known
-// or another go routine is retrieving it right now.
-// When it's the first time the host is processed, mark it as being processed and
-// return false. The caller is then responsible for retrieving the host and
-// calling setHostVersion().
-func (c *CollectNodeESXiVersion) checkOrMarkHostProcessing(hostName string) (string, bool) {
-	c.esxiVersionsLock.Lock()
-	defer c.esxiVersionsLock.Unlock()
-	var esxiVersion string
-	ver, found := c.esxiVersions[hostName]
-	if ver.version == "" {
-		esxiVersion = "<in progress>"
-	}
-	if found {
-		return ver.version, true
-	}
-	// Mark the hostName as in progress
-	c.esxiVersions[hostName] = esxiVersionInfo{"", ""}
-	return esxiVersion, false
-}
-
-func (c *CollectNodeESXiVersion) setHostVersion(hostName string, version string, apiVersion string) {
-	c.esxiVersionsLock.Lock()
-	defer c.esxiVersionsLock.Unlock()
-	c.esxiVersions[hostName] = esxiVersionInfo{version, apiVersion}
 }

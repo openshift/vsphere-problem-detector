@@ -2,9 +2,13 @@ package operator
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/blang/semver"
 	ocpv1 "github.com/openshift/api/config/v1"
 	operatorapi "github.com/openshift/api/operator/v1"
 	infrainformer "github.com/openshift/client-go/config/informers/externalversions/config/v1"
@@ -13,6 +17,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -56,7 +61,11 @@ const (
 	// TODO: make it configurable?
 	parallelVSPhereCalls = 10
 	// Size of golang channel buffer
-	channelBufferSize = 100
+	channelBufferSize     = 100
+	minHostVersion        = "6.7.3"
+	minVCenterVersion     = "6.7.3"
+	minHardwareVersion    = "13"
+	hardwareVersionPrefix = "vmx-"
 )
 
 var (
@@ -130,6 +139,9 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		Status: operatorapi.ConditionTrue,
 	}
 
+	blockUpgrade := false
+	var blockUpgradeReason string
+
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
 	if platformSupported && time.Now().After(c.nextCheck) {
 		delay, err := c.runChecks(ctx)
@@ -139,6 +151,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		// Do not return the error, it would degrade the whole cluster.
 		// Remember the error and put it in Available condition message below.
 		c.lastError = err
+
+		// TODO: If cluster is blocked from upgrades we should run these checks more often
+		blockUpgrade, blockUpgradeReason = c.checkForDeprecation(util.VSphereClusterInfo)
+
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
 		queueKey := syncCtx.QueueKey()
@@ -161,13 +177,90 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		syncErrrorMetric.WithLabelValues("SyncError").Set(0)
 	}
 
-	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient,
-		v1helpers.UpdateConditionFn(availableCnd),
-	); updateErr != nil {
+	updateFuncs := []v1helpers.UpdateStatusFunc{}
+	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(availableCnd))
+	allowUpgradeCond := operatorapi.OperatorCondition{
+		Type:   controllerName + operatorapi.OperatorStatusTypeUpgradeable,
+		Status: operatorapi.ConditionTrue,
+	}
+
+	if blockUpgrade {
+		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", blockUpgradeReason)
+		klog.Infof(blockUpgradeMessage)
+		c.eventRecorder.Warningf("Marking cluster as un-upgradable", "because %s", blockUpgradeReason)
+		allowUpgradeCond.Status = operatorapi.ConditionFalse
+		allowUpgradeCond.Message = blockUpgradeMessage
+		allowUpgradeCond.Reason = "VsphereOlderVersonDetected"
+	}
+
+	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(allowUpgradeCond))
+	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient, updateFuncs...); updateErr != nil {
 		return updateErr
 	}
 
 	return nil
+}
+
+func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util.ClusterInfo) (bool, string) {
+	esxiVersions := clusterInfo.GetHostVersions()
+	for host, esxiVersion := range esxiVersions {
+		hasMinimum, err := isMinimumVersion(minHostVersion, esxiVersion.ApiVersion)
+		if err != nil {
+			klog.Errorf("error parsing host version: %v", err)
+			continue
+		}
+		if !hasMinimum {
+			return true, fmt.Sprintf("host %s is on esxi version %s", host, esxiVersion.ApiVersion)
+		}
+	}
+
+	for hwVersion := range clusterInfo.GetHardwareVersion() {
+		vmHwVersion := strings.Trim(hwVersion, hardwareVersionPrefix)
+		versionInt, err := strconv.ParseInt(vmHwVersion, 0, 64)
+		if err != nil {
+			klog.Errorf("error parsing hardware version %s: %v", hwVersion, err)
+			continue
+		}
+		if versionInt < 15 {
+			return true, fmt.Sprintf("one or more VMs are on hardware version %s", hwVersion)
+		}
+	}
+
+	_, vcenterApiVersion := clusterInfo.GetVCenterInfo()
+	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterApiVersion)
+	if err != nil {
+		klog.Errorf("error parsing vcenter version: %v", err)
+	}
+
+	if !hasMinimum {
+		return true, fmt.Sprintf("connected vcenter is on %s version", vcenterApiVersion)
+	}
+
+	return false, ""
+}
+
+func isMinimumVersion(minimumVersion string, currentVersion string) (bool, error) {
+	minimumSemver, err := semver.New(minimumVersion)
+	if err != nil {
+		return true, err
+	}
+	semverString := parseForSemver(currentVersion)
+	currentSemVer, err := semver.ParseTolerant(semverString)
+	if err != nil {
+		return true, err
+	}
+	if currentSemVer.Compare(*minimumSemver) >= 0 {
+		return true, nil
+	}
+	return false, nil
+}
+
+func parseForSemver(version string) string {
+	parts := strings.Split(version, ".")
+	if len(parts) > 3 {
+		return strings.Join(parts[0:3], ".")
+	}
+	return version
 }
 
 func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
@@ -186,6 +279,9 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		VMClient:   vmClient,
 		KubeClient: c,
 	}
+
+	// Make sure we don't use stale version information in checks
+	util.VSphereClusterInfo.Reset()
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 	resultCollector := NewResultsCollector()
