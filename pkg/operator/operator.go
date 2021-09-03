@@ -76,7 +76,7 @@ var (
 		// Don't limit nr. of steps
 		Steps: math.MaxInt32,
 		// Maximum interval between checks.
-		Cap: time.Hour * 8,
+		Cap: time.Hour * 1,
 	}
 )
 
@@ -152,8 +152,11 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		// Remember the error and put it in Available condition message below.
 		c.lastError = err
 
-		// TODO: If cluster is blocked from upgrades we should run these checks more often
 		blockUpgrade, blockUpgradeReason = c.checkForDeprecation(util.VSphereClusterInfo)
+		// if we blocked upgrades then we should retry sooner
+		if blockUpgrade {
+			delay = c.backoff.Step()
+		}
 
 		// Poke the controller sync loop after the delay to re-run tests
 		queue := syncCtx.Queue()
