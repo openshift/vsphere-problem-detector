@@ -12,24 +12,27 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 	tests := []struct {
 		name            string
 		esxiVersion     string
+		esxiApiversion  string
 		expectedMetrics string
 	}{
 		{
-			name:        "esxi 6.7.0",
-			esxiVersion: "6.7.0",
+			name:           "esxi 6.7.0",
+			esxiVersion:    "6.7.0",
+			esxiApiversion: "6.7.3",
 			expectedMetrics: `
         # HELP vsphere_esxi_version_total [ALPHA] Number of ESXi hosts with given version.
         # TYPE vsphere_esxi_version_total gauge
-        vsphere_esxi_version_total{version="6.7.0"} 1
+        vsphere_esxi_version_total{api_version="6.7.3", version="6.7.0"} 1
 `,
 		},
 		{
-			name:        "esxi 7.0.0",
-			esxiVersion: "7.0.0",
+			name:           "esxi 7.0.0",
+			esxiVersion:    "7.0.0",
+			esxiApiversion: "7.0.0-1",
 			expectedMetrics: `
         # HELP vsphere_esxi_version_total [ALPHA] Number of ESXi hosts with given version.
         # TYPE vsphere_esxi_version_total gauge
-        vsphere_esxi_version_total{version="7.0.0"} 1
+        vsphere_esxi_version_total{api_version="7.0.0-1", version="7.0.0"} 1
 `,
 		},
 	}
@@ -48,7 +51,7 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			defer cleanup()
 
 			// Set esxi version of the only host.
-			err = customizeHostVersion(defaultHostId, test.esxiVersion)
+			err = customizeHostVersion(defaultHostId, test.esxiVersion, test.esxiApiversion)
 			if err != nil {
 				t.Fatalf("Failed to customize host: %s", err)
 			}

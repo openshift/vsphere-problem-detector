@@ -204,7 +204,7 @@ func customizeVM(ctx *CheckContext, node *v1.Node, spec *types.VirtualMachineCon
 
 }
 
-func customizeHostVersion(hostSystemId string, version string) error {
+func customizeHostVersion(hostSystemId string, version string, apiVersion string) error {
 	hsRef := simulator.Map.Get(types.ManagedObjectReference{
 		Type:  "HostSystem",
 		Value: hostSystemId,
@@ -215,5 +215,6 @@ func customizeHostVersion(hostSystemId string, version string) error {
 
 	hs := hsRef.(*simulator.HostSystem)
 	hs.Config.Product.Version = version
+	hs.Config.Product.ApiVersion = apiVersion
 	return nil
 }
