@@ -64,7 +64,6 @@ const (
 	channelBufferSize     = 100
 	minHostVersion        = "6.7.3"
 	minVCenterVersion     = "6.7.3"
-	minHardwareVersion    = "13"
 	hardwareVersionPrefix = "vmx-"
 )
 
@@ -144,7 +143,8 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 
 	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
 	if platformSupported && time.Now().After(c.nextCheck) {
-		delay, err := c.runChecks(ctx)
+		clusterInfo := util.NewClusterInfo()
+		delay, err := c.runChecks(ctx, clusterInfo)
 		if err != nil {
 			klog.Errorf("Failed to run checks: %s", err)
 		}
@@ -152,7 +152,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		// Remember the error and put it in Available condition message below.
 		c.lastError = err
 
-		blockUpgrade, blockUpgradeReason = c.checkForDeprecation(util.VSphereClusterInfo)
+		blockUpgrade, blockUpgradeReason = c.checkForDeprecation(clusterInfo)
 		// if we blocked upgrades then we should retry sooner
 		if blockUpgrade {
 			delay = c.backoff.Step()
@@ -190,10 +190,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if blockUpgrade {
 		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", blockUpgradeReason)
 		klog.Infof(blockUpgradeMessage)
-		c.eventRecorder.Warningf("Marking cluster as un-upgradable", "because %s", blockUpgradeReason)
+		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", blockUpgradeReason)
 		allowUpgradeCond.Status = operatorapi.ConditionFalse
 		allowUpgradeCond.Message = blockUpgradeMessage
-		allowUpgradeCond.Reason = "VsphereOlderVersonDetected"
+		allowUpgradeCond.Reason = "VSphereOlderVersionDetected"
 	}
 
 	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(allowUpgradeCond))
@@ -207,19 +207,19 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util.ClusterInfo) (bool, string) {
 	esxiVersions := clusterInfo.GetHostVersions()
 	for host, esxiVersion := range esxiVersions {
-		hasMinimum, err := isMinimumVersion(minHostVersion, esxiVersion.ApiVersion)
+		hasMinimum, err := isMinimumVersion(minHostVersion, esxiVersion.APIVersion)
 		if err != nil {
 			klog.Errorf("error parsing host version: %v", err)
 			continue
 		}
 		if !hasMinimum {
-			return true, fmt.Sprintf("host %s is on esxi version %s", host, esxiVersion.ApiVersion)
+			return true, fmt.Sprintf("host %s is on esxi version %s", host, esxiVersion.APIVersion)
 		}
 	}
 
 	for hwVersion := range clusterInfo.GetHardwareVersion() {
-		vmHwVersion := strings.Trim(hwVersion, hardwareVersionPrefix)
-		versionInt, err := strconv.ParseInt(vmHwVersion, 0, 64)
+		vmHWVersion := strings.Trim(hwVersion, hardwareVersionPrefix)
+		versionInt, err := strconv.ParseInt(vmHWVersion, 0, 64)
 		if err != nil {
 			klog.Errorf("error parsing hardware version %s: %v", hwVersion, err)
 			continue
@@ -229,14 +229,14 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 		}
 	}
 
-	_, vcenterApiVersion := clusterInfo.GetVCenterInfo()
-	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterApiVersion)
+	_, vcenterAPIVersion := clusterInfo.GetVCenterVersion()
+	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterAPIVersion)
 	if err != nil {
 		klog.Errorf("error parsing vcenter version: %v", err)
 	}
 
 	if !hasMinimum {
-		return true, fmt.Sprintf("connected vcenter is on %s version", vcenterApiVersion)
+		return true, fmt.Sprintf("connected vcenter is on %s version", vcenterAPIVersion)
 	}
 
 	return false, ""
@@ -266,7 +266,7 @@ func parseForSemver(version string) string {
 	return version
 }
 
-func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.Duration, error) {
+func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, error) {
 	// pre-calculate exp. backoff on error
 	nextErrorDelay := c.backoff.Step()
 	c.lastCheck = time.Now()
@@ -277,14 +277,12 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 	}
 
 	checkContext := &check.CheckContext{
-		Context:    ctx,
-		VMConfig:   vmConfig,
-		VMClient:   vmClient,
-		KubeClient: c,
+		Context:     ctx,
+		VMConfig:    vmConfig,
+		VMClient:    vmClient,
+		KubeClient:  c,
+		ClusterInfo: clusterInfo,
 	}
-
-	// Make sure we don't use stale version information in checks
-	util.VSphereClusterInfo.Reset()
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 	resultCollector := NewResultsCollector()

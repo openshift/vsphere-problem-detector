@@ -1,7 +1,6 @@
 package check
 
 import (
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 )
@@ -38,6 +37,6 @@ func collectVCenterInfo(ctx *CheckContext) {
 	version := ctx.VMClient.ServiceContent.About.Version
 	apiVersion := ctx.VMClient.ServiceContent.About.ApiVersion
 	uuid := ctx.VMClient.ServiceContent.About.InstanceUuid
-	util.VSphereClusterInfo.SetVCenterVersion(version, apiVersion)
+	ctx.ClusterInfo.SetVCenterVersion(version, apiVersion)
 	vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid).Set(1.0)
 }

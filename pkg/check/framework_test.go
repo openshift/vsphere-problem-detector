@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
@@ -85,12 +86,14 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the similator: %s", err)
 	}
+	clusterInfo := util.NewClusterInfo()
 
 	ctx = &CheckContext{
-		Context:    context.TODO(),
-		VMConfig:   simulatorConfig(),
-		VMClient:   client,
-		KubeClient: kubeClient,
+		Context:     context.TODO(),
+		VMConfig:    simulatorConfig(),
+		VMClient:    client,
+		KubeClient:  kubeClient,
+		ClusterInfo: clusterInfo,
 	}
 
 	cleanup = func() {

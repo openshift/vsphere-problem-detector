@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -41,7 +40,6 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			util.VSphereClusterInfo.Reset()
 			check := CollectNodeHWVersion{}
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),

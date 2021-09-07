@@ -1,7 +1,6 @@
 package check
 
 import (
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
@@ -45,12 +44,12 @@ func (c *CollectNodeHWVersion) StartCheck() error {
 func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	hwVersion := vm.Config.Version
 	klog.V(2).Infof("Node %s has HW version %s", node.Name, hwVersion)
-	util.VSphereClusterInfo.SetHardwareVersion(hwVersion)
+	ctx.ClusterInfo.SetHardwareVersion(hwVersion)
 	return nil
 }
 
 func (c *CollectNodeHWVersion) FinishCheck(ctx *CheckContext) {
-	hwversions := util.VSphereClusterInfo.GetHardwareVersion()
+	hwversions := ctx.ClusterInfo.GetHardwareVersion()
 
 	for hwVersion, count := range hwversions {
 		hwVersionMetric.WithLabelValues(hwVersion).Set(float64(count))

@@ -48,7 +48,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 		return fmt.Errorf("error getting ESXi host for node %s: vm.runtime.host is empty", node.Name)
 	}
 	hostName := hostRef.Value
-	if ver, processed := util.VSphereClusterInfo.MarkHostForProcessing(hostName); processed {
+	if ver, processed := ctx.ClusterInfo.MarkHostForProcessing(hostName); processed {
 		klog.V(4).Infof("Node %s runs on cached ESXi host %s: %s", node.Name, hostName, ver)
 		return nil
 	}
@@ -71,21 +71,21 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 	apiVersion := o.Config.Product.ApiVersion
 	realHostName := o.Name // "10.0.0.2" or other user-friendly name of the host.
 	klog.V(2).Infof("Node %s runs on host %s (%s) with ESXi version: %s", node.Name, hostName, realHostName, version)
-	util.VSphereClusterInfo.SetHostVersion(hostName, version, apiVersion)
+	ctx.ClusterInfo.SetHostVersion(hostName, version, apiVersion)
 
 	return nil
 }
 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
-	versions := make(map[util.EsxiVersionInfo]int)
-	esxiVersions := util.VSphereClusterInfo.GetHostVersions()
+	versions := make(map[util.ESXiVersionInfo]int)
+	esxiVersions := ctx.ClusterInfo.GetHostVersions()
 	for _, v := range esxiVersions {
 		versions[v]++
 	}
 
 	// Report the count
 	for v, count := range versions {
-		esxiVersionMetric.WithLabelValues(v.Version, v.ApiVersion).Set(float64(count))
+		esxiVersionMetric.WithLabelValues(v.Version, v.APIVersion).Set(float64(count))
 	}
 	return
 }

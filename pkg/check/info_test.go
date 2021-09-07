@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/metrics/testutil"
 )
@@ -15,7 +14,6 @@ func TestInfo(t *testing.T) {
 		t.Fatalf("Failed to setup vSphere simulator: %s", err)
 	}
 	defer cleanup()
-	util.VSphereClusterInfo.Reset()
 
 	err = CollectClusterInfo(ctx)
 	if err != nil {

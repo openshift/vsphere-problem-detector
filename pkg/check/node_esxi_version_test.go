@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"k8s.io/component-base/metrics/legacyregistry"
 )
@@ -41,7 +40,6 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			util.VSphereClusterInfo.Reset()
 			check := CollectNodeESXiVersion{}
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
