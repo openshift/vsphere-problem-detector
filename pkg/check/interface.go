@@ -6,6 +6,7 @@ import (
 	"time"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
@@ -54,10 +55,11 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
-	Context    context.Context
-	VMConfig   *vsphere.VSphereConfig
-	VMClient   *vim25.Client
-	KubeClient KubeClient
+	Context     context.Context
+	VMConfig    *vsphere.VSphereConfig
+	VMClient    *vim25.Client
+	KubeClient  KubeClient
+	ClusterInfo *util.ClusterInfo
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.

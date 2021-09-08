@@ -3,6 +3,7 @@ module github.com/openshift/vsphere-problem-detector
 go 1.15
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
