@@ -143,7 +143,8 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return nil
 	}
 
-	delay, checkPerformed := c.runSyncChecks(ctx)
+	clusterInfo := util.NewClusterInfo()
+	delay, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
 
 	syncErrorValue := 0
 	if c.lastClusterCheckResult.checkError != nil {
@@ -201,13 +202,12 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context)
 }
 
 // runSyncChecks runs vsphere checks and return next duration and whether checks were actually ran.
-func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context) (time.Duration, bool) {
+func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, bool) {
 	var delay time.Duration
 	if !time.Now().After(c.nextCheck) {
 		return delay, false
 	}
 
-	clusterInfo := util.NewClusterInfo()
 	delay, err := c.runChecks(ctx, clusterInfo)
 	if err != nil {
 		c.lastClusterCheckResult.checkError = err
