@@ -121,3 +121,7 @@ func TestCheckForDeprecation(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncChecks(t *testing.T) {
+
+}
