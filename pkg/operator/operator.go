@@ -152,18 +152,20 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	}
 	syncErrrorMetric.WithLabelValues("SyncError").Set(float64(syncErrorValue))
 
-	if checkPerformed {
-		queue := syncCtx.Queue()
-		queueKey := syncCtx.QueueKey()
-		c.nextCheck = c.lastCheck.Add(delay)
-		klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
-		time.AfterFunc(delay, func() {
-			queue.Add(queueKey)
-		})
-		return c.updateConditions(ctx)
-	} else {
-		return c.updateConditions(ctx)
+	// if no checks were performed don't update conditons
+	if !checkPerformed {
+		return nil
 	}
+
+	// update conditions when checks are performed
+	queue := syncCtx.Queue()
+	queueKey := syncCtx.QueueKey()
+	c.nextCheck = c.lastCheck.Add(delay)
+	klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
+	time.AfterFunc(delay, func() {
+		queue.Add(queueKey)
+	})
+	return c.updateConditions(ctx)
 }
 
 func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context) error {
