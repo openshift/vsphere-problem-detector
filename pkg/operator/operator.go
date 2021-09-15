@@ -74,7 +74,7 @@ const (
 var (
 	defaultBackoff = wait.Backoff{
 		Duration: time.Minute,
-		Factor:   1.5,
+		Factor:   2,
 		Jitter:   0.01,
 		// Don't limit nr. of steps
 		Steps: math.MaxInt32,
@@ -221,7 +221,9 @@ func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, cl
 	blockUpgrade, blockUpgradeReason := c.checkForDeprecation(clusterInfo)
 	c.lastClusterCheckResult.blockUpgrade = blockUpgrade
 	c.lastClusterCheckResult.blockUpgradeReason = blockUpgradeReason
-	if blockUpgrade {
+	// if we are going to block upgrades but there was no error
+	// then we should try more frequently in case node/cluster status is updated
+	if blockUpgrade && err == nil {
 		delay = c.backoff.Step()
 	}
 	return delay, true

@@ -200,6 +200,23 @@ func TestSyncChecks(t *testing.T) {
 			isDeprecated:        true,
 			expectedDuration:    defaultBackoff.Step(),
 		},
+		{
+			name: "when cluster is deprecated and check had errors",
+			clusterInfo: util.MakeClusterInfo(map[string]string{
+				"host_name":           "foo.bar",
+				"host_version":        "6.7.0",
+				"host_api_version":    "6.7.3",
+				"vcenter_api_version": "6.7.3",
+				"vcenter_version":     "6.7.0",
+				"hw_version":          "vmx-13",
+			}),
+			performChecks:       true,
+			expectedCheckPerfom: true,
+			checkError:          fmt.Errorf("error running checks"),
+			hasError:            true,
+			isDeprecated:        true,
+			expectedDuration:    defaultBackoff.Step(),
+		},
 	}
 
 	for _, tc := range tests {
@@ -222,6 +239,7 @@ func TestSyncChecks(t *testing.T) {
 			if tc.expectedCheckPerfom != checksPerformed {
 				t.Fatalf("for checks performed expected %v got %v", tc.expectedCheckPerfom, checksPerformed)
 			}
+			t.Logf("delay is: %v and expectedDelay is: %v\n", delay, tc.expectedDuration)
 			if !compareTimeDiffWithinTimeFactor(tc.expectedDuration, delay) {
 				t.Fatalf("expected next check duration to be %v got %v", tc.expectedDuration, delay)
 			}
@@ -241,11 +259,12 @@ func TestSyncChecks(t *testing.T) {
 
 // compareTimeDiff checks if two time durations are within Factor duration
 func compareTimeDiffWithinTimeFactor(t1, t2 time.Duration) bool {
+	allowedTimeFactor := defaultBackoff.Duration - 30*time.Second
 	if t1 <= t2 {
-		maxTime := time.Duration(float64(t1) + float64(defaultBackoff.Duration))
+		maxTime := time.Duration(float64(t1) + float64(allowedTimeFactor))
 		return (t2 < maxTime)
 	} else {
-		maxTime := time.Duration(float64(t2) + float64(defaultBackoff.Duration))
+		maxTime := time.Duration(float64(t2) + float64(allowedTimeFactor))
 		return (t1 < maxTime)
 	}
 }
