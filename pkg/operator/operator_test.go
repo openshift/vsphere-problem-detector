@@ -1,7 +1,10 @@
 package operator
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
@@ -119,5 +122,149 @@ func TestCheckForDeprecation(t *testing.T) {
 				t.Errorf("expected %v got %v", tc.isDeprecated, result)
 			}
 		})
+	}
+}
+
+type testvSphereChecker struct {
+	err error
+}
+
+func (d *testvSphereChecker) runChecks(ctx context.Context, info *util.ClusterInfo) (*ResultCollector, error) {
+	resultCollector := NewResultsCollector()
+	return resultCollector, d.err
+}
+
+var _ vSphereCheckerInterface = &testvSphereChecker{}
+
+func TestSyncChecks(t *testing.T) {
+	tests := []struct {
+		name                string
+		checkError          error
+		clusterInfo         *util.ClusterInfo
+		isDeprecated        bool
+		hasError            bool
+		performChecks       bool
+		expectedCheckPerfom bool
+		expectedDuration    time.Duration
+	}{
+		{
+			name: "when no error running checks and latest version",
+			clusterInfo: util.MakeClusterInfo(map[string]string{
+				"host_name":           "foo.bar",
+				"host_version":        "7.0.1",
+				"host_api_version":    "7.0.1.2",
+				"vcenter_api_version": "7.0.1.2",
+				"vcenter_version":     "7.0.1",
+				"hw_version":          "vmx-15",
+			}),
+			performChecks:       true,
+			expectedCheckPerfom: true,
+			expectedDuration:    defaultBackoff.Cap,
+		},
+		{
+			name:       "when there was an error running checks",
+			checkError: fmt.Errorf("error running checks"),
+			clusterInfo: util.MakeClusterInfo(map[string]string{
+				"host_name":           "foo.bar",
+				"host_version":        "7.0.1",
+				"host_api_version":    "7.0.1.2",
+				"vcenter_api_version": "7.0.1.2",
+				"vcenter_version":     "7.0.1",
+				"hw_version":          "vmx-15",
+			}),
+			performChecks:       true,
+			expectedCheckPerfom: true,
+			hasError:            true,
+			expectedDuration:    defaultBackoff.Step(),
+		},
+		{
+			name:                "when no checks were ran",
+			clusterInfo:         util.MakeClusterInfo(map[string]string{}),
+			performChecks:       false,
+			expectedCheckPerfom: false,
+			expectedDuration:    time.Duration(0),
+			isDeprecated:        false,
+		},
+		{
+			name: "when cluster was deprecated",
+			clusterInfo: util.MakeClusterInfo(map[string]string{
+				"host_name":           "foo.bar",
+				"host_version":        "6.7.0",
+				"host_api_version":    "6.7.3",
+				"vcenter_api_version": "6.7.3",
+				"vcenter_version":     "6.7.0",
+				"hw_version":          "vmx-13",
+			}),
+			performChecks:       true,
+			expectedCheckPerfom: true,
+			isDeprecated:        true,
+			expectedDuration:    defaultBackoff.Step(),
+		},
+		{
+			name: "when cluster is deprecated and check had errors",
+			clusterInfo: util.MakeClusterInfo(map[string]string{
+				"host_name":           "foo.bar",
+				"host_version":        "6.7.0",
+				"host_api_version":    "6.7.3",
+				"vcenter_api_version": "6.7.3",
+				"vcenter_version":     "6.7.0",
+				"hw_version":          "vmx-13",
+			}),
+			performChecks:       true,
+			expectedCheckPerfom: true,
+			checkError:          fmt.Errorf("error running checks"),
+			hasError:            true,
+			isDeprecated:        true,
+			expectedDuration:    defaultBackoff.Step(),
+		},
+	}
+
+	for _, tc := range tests {
+		info := tc.clusterInfo
+		t.Run(tc.name, func(t *testing.T) {
+			vsphereProblemOperator := &vSphereProblemDetectorController{
+				checkerFunc: func(c *vSphereProblemDetectorController) vSphereCheckerInterface {
+					return &testvSphereChecker{err: tc.checkError}
+				},
+				backoff:                defaultBackoff,
+				lastClusterCheckResult: &clusterCheckResult{},
+			}
+
+			// if we should not perform checks, add randomly 10s to next check duration
+			if !tc.performChecks {
+				vsphereProblemOperator.nextCheck = time.Now().Add(10 * time.Second)
+			}
+
+			delay, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info)
+			if tc.expectedCheckPerfom != checksPerformed {
+				t.Fatalf("for checks performed expected %v got %v", tc.expectedCheckPerfom, checksPerformed)
+			}
+			t.Logf("delay is: %v and expectedDelay is: %v\n", delay, tc.expectedDuration)
+			if !compareTimeDiffWithinTimeFactor(tc.expectedDuration, delay) {
+				t.Fatalf("expected next check duration to be %v got %v", tc.expectedDuration, delay)
+			}
+			if tc.isDeprecated != vsphereProblemOperator.lastClusterCheckResult.blockUpgrade {
+				t.Fatalf("expected deprecated to be %v got %v", tc.isDeprecated, vsphereProblemOperator.lastClusterCheckResult.blockUpgrade)
+			}
+			checkError := vsphereProblemOperator.lastClusterCheckResult.checkError
+			if checkError != nil && !tc.hasError {
+				t.Fatalf("expected no error got %v", checkError)
+			}
+			if tc.hasError && (checkError == nil) {
+				t.Fatalf("expected error but got nothing")
+			}
+		})
+	}
+}
+
+// compareTimeDiff checks if two time durations are within Factor duration
+func compareTimeDiffWithinTimeFactor(t1, t2 time.Duration) bool {
+	allowedTimeFactor := defaultBackoff.Duration - 30*time.Second
+	if t1 <= t2 {
+		maxTime := time.Duration(float64(t1) + float64(allowedTimeFactor))
+		return (t2 < maxTime)
+	} else {
+		maxTime := time.Duration(float64(t2) + float64(allowedTimeFactor))
+		return (t1 < maxTime)
 	}
 }

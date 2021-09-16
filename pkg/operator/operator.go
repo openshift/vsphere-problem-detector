@@ -18,8 +18,6 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
-	"github.com/vmware/govmomi/vim25/mo"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
@@ -39,14 +37,20 @@ type vSphereProblemDetectorController struct {
 	eventRecorder        events.Recorder
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
-	clusterChecks map[string]check.ClusterCheck
-	nodeChecks    []check.NodeCheck
+	clusterChecks          map[string]check.ClusterCheck
+	nodeChecks             []check.NodeCheck
+	checkerFunc            func(c *vSphereProblemDetectorController) vSphereCheckerInterface
+	lastClusterCheckResult *clusterCheckResult
 
-	lastCheck   time.Time
-	nextCheck   time.Time
-	lastResults []checkResult
-	lastError   error
-	backoff     wait.Backoff
+	lastCheck time.Time
+	nextCheck time.Time
+	backoff   wait.Backoff
+}
+
+type clusterCheckResult struct {
+	checkError         error
+	blockUpgrade       bool
+	blockUpgradeReason string
 }
 
 type checkResult struct {
@@ -92,19 +96,21 @@ func NewVSphereProblemDetectorController(
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
 	c := &vSphereProblemDetectorController{
-		operatorClient:       operatorClient,
-		kubeClient:           kubeClient,
-		secretLister:         secretInformer.Lister(),
-		nodeLister:           nodeInformer.Lister(),
-		pvLister:             pvInformer.Lister(),
-		scLister:             scInformer.Lister(),
-		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
-		infraLister:          configInformer.Lister(),
-		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
-		clusterChecks:        check.DefaultClusterChecks,
-		nodeChecks:           check.DefaultNodeChecks,
-		backoff:              defaultBackoff,
-		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
+		operatorClient:         operatorClient,
+		kubeClient:             kubeClient,
+		secretLister:           secretInformer.Lister(),
+		nodeLister:             nodeInformer.Lister(),
+		pvLister:               pvInformer.Lister(),
+		scLister:               scInformer.Lister(),
+		cloudConfigMapLister:   cloudConfigMapInformer.Lister(),
+		infraLister:            configInformer.Lister(),
+		eventRecorder:          eventRecorder.WithComponentSuffix(controllerName),
+		clusterChecks:          check.DefaultClusterChecks,
+		nodeChecks:             check.DefaultNodeChecks,
+		backoff:                defaultBackoff,
+		checkerFunc:            newVSphereChecker,
+		lastClusterCheckResult: &clusterCheckResult{},
+		nextCheck:              time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
@@ -133,51 +139,45 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return err
 	}
 
+	if !platformSupported {
+		return nil
+	}
+
+	clusterInfo := util.NewClusterInfo()
+	delay, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
+
+	syncErrorValue := 0
+	if c.lastClusterCheckResult.checkError != nil {
+		syncErrorValue = 1
+	}
+	syncErrrorMetric.WithLabelValues("SyncError").Set(float64(syncErrorValue))
+
+	// if no checks were performed don't update conditons
+	if !checkPerformed {
+		return nil
+	}
+
+	// update conditions when checks are performed
+	queue := syncCtx.Queue()
+	queueKey := syncCtx.QueueKey()
+	c.nextCheck = c.lastCheck.Add(delay)
+	klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
+	time.AfterFunc(delay, func() {
+		queue.Add(queueKey)
+	})
+	return c.updateConditions(ctx)
+}
+
+func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context) error {
 	availableCnd := operatorapi.OperatorCondition{
 		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
 		Status: operatorapi.ConditionTrue,
 	}
 
-	blockUpgrade := false
-	var blockUpgradeReason string
-
-	// TODO: Run in a separate goroutine? We may not want to run time-consuming checks here.
-	if platformSupported && time.Now().After(c.nextCheck) {
-		clusterInfo := util.NewClusterInfo()
-		delay, err := c.runChecks(ctx, clusterInfo)
-		if err != nil {
-			klog.Errorf("Failed to run checks: %s", err)
-		}
-		// Do not return the error, it would degrade the whole cluster.
-		// Remember the error and put it in Available condition message below.
-		c.lastError = err
-
-		blockUpgrade, blockUpgradeReason = c.checkForDeprecation(clusterInfo)
-		// if we blocked upgrades then we should retry sooner
-		if blockUpgrade {
-			delay = c.backoff.Step()
-		}
-
-		// Poke the controller sync loop after the delay to re-run tests
-		queue := syncCtx.Queue()
-		queueKey := syncCtx.QueueKey()
-		c.nextCheck = c.lastCheck.Add(delay)
-		klog.V(2).Infof("Scheduled the next check in %s (%s)", delay, c.nextCheck)
-		time.AfterFunc(delay, func() {
-			queue.Add(queueKey)
-		})
-	}
-
-	if c.lastError != nil {
-		// Make sure the last error is saved into Available condition on every sync call,
-		// not only when the check actually run.
+	if c.lastClusterCheckResult.checkError != nil {
 		// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
-		availableCnd.Message = c.lastError.Error()
+		availableCnd.Message = c.lastClusterCheckResult.checkError.Error()
 		availableCnd.Reason = "SyncFailed"
-		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
-	} else {
-		// Clean the error metric
-		syncErrrorMetric.WithLabelValues("SyncError").Set(0)
 	}
 
 	updateFuncs := []v1helpers.UpdateStatusFunc{}
@@ -187,10 +187,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		Status: operatorapi.ConditionTrue,
 	}
 
-	if blockUpgrade {
-		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", blockUpgradeReason)
-		klog.Infof(blockUpgradeMessage)
-		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", blockUpgradeReason)
+	if c.lastClusterCheckResult.blockUpgrade {
+		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", c.lastClusterCheckResult.blockUpgradeReason)
+		klog.Warningf(blockUpgradeMessage)
+		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", c.lastClusterCheckResult.blockUpgradeReason)
 		allowUpgradeCond.Status = operatorapi.ConditionFalse
 		allowUpgradeCond.Message = blockUpgradeMessage
 		allowUpgradeCond.Reason = "VSphereOlderVersionDetected"
@@ -200,8 +200,33 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient, updateFuncs...); updateErr != nil {
 		return updateErr
 	}
-
 	return nil
+}
+
+// runSyncChecks runs vsphere checks and return next duration and whether checks were actually ran.
+func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, bool) {
+	var delay time.Duration
+	if !time.Now().After(c.nextCheck) {
+		return delay, false
+	}
+
+	delay, err := c.runChecks(ctx, clusterInfo)
+	if err != nil {
+		c.lastClusterCheckResult.checkError = err
+		klog.Errorf("Failed to run checks: %s", err)
+	} else {
+		c.lastClusterCheckResult.checkError = nil
+	}
+
+	blockUpgrade, blockUpgradeReason := c.checkForDeprecation(clusterInfo)
+	c.lastClusterCheckResult.blockUpgrade = blockUpgrade
+	c.lastClusterCheckResult.blockUpgradeReason = blockUpgradeReason
+	// if we are going to block upgrades but there was no error
+	// then we should try more frequently in case node/cluster status is updated
+	if blockUpgrade && err == nil {
+		delay = c.backoff.Step()
+	}
+	return delay, true
 }
 
 func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util.ClusterInfo) (bool, string) {
@@ -271,37 +296,15 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 	nextErrorDelay := c.backoff.Step()
 	c.lastCheck = time.Now()
 
-	vmConfig, vmClient, err := c.connect(ctx)
+	checker := c.checkerFunc(c)
+	resultCollector, err := checker.runChecks(ctx, clusterInfo)
 	if err != nil {
 		return nextErrorDelay, err
 	}
-
-	checkContext := &check.CheckContext{
-		Context:     ctx,
-		VMConfig:    vmConfig,
-		VMClient:    vmClient,
-		KubeClient:  c,
-		ClusterInfo: clusterInfo,
-	}
-
-	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
-	resultCollector := NewResultsCollector()
-	c.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
-	if err := c.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
-		return nextErrorDelay, err
-	}
-
-	klog.V(4).Infof("Waiting for all checks")
-	if err := checkRunner.Wait(ctx); err != nil {
-		return nextErrorDelay, err
-	}
-	c.finishNodeChecks(checkContext)
-
 	klog.V(4).Infof("All checks complete")
 
 	results, checksFailed := resultCollector.Collect()
 	c.reportResults(results)
-	c.lastResults = results
 	var nextDelay time.Duration
 	if checksFailed {
 		// Use exponential backoff
@@ -314,102 +317,6 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 		nextDelay = defaultBackoff.Cap
 	}
 	return nextDelay, nil
-}
-
-func (c *vSphereProblemDetectorController) enqueueClusterChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) {
-	for name, checkFunc := range c.clusterChecks {
-		name := name
-		checkFunc := checkFunc
-		checkRunner.RunGoroutine(checkContext.Context, func() {
-			c.runSingleClusterCheck(checkContext, name, checkFunc, resultCollector)
-		})
-	}
-}
-
-func (c *vSphereProblemDetectorController) runSingleClusterCheck(checkContext *check.CheckContext, name string, checkFunc check.ClusterCheck, resultCollector *ResultCollector) {
-	res := checkResult{
-		Name: name,
-	}
-	klog.V(4).Infof("%s starting", name)
-	err := checkFunc(checkContext)
-	if err != nil {
-		res.Error = err
-		clusterCheckErrrorMetric.WithLabelValues(name).Set(1)
-		klog.V(2).Infof("%s failed: %s", name, err)
-	} else {
-		clusterCheckErrrorMetric.WithLabelValues(name).Set(0)
-		klog.V(2).Infof("%s passed", name)
-	}
-	clusterCheckTotalMetric.WithLabelValues(name).Inc()
-	resultCollector.AddResult(res)
-}
-
-func (c *vSphereProblemDetectorController) enqueueNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector) error {
-	nodes, err := c.ListNodes(checkContext.Context)
-	if err != nil {
-		return err
-	}
-
-	for _, nodeCheck := range c.nodeChecks {
-		nodeCheck.StartCheck()
-	}
-
-	for i := range nodes {
-		node := nodes[i]
-		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
-	}
-	return nil
-}
-
-func (c *vSphereProblemDetectorController) enqueueSingleNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector, node *v1.Node) {
-	// Run a go routine that reads VM from vSphere and schedules separate goroutines for each check.
-	checkRunner.RunGoroutine(checkContext.Context, func() {
-		// Try to get VM
-		vm, err := c.getVM(checkContext, node)
-		if err != nil {
-			// mark all checks as failed
-			for _, check := range c.nodeChecks {
-				res := checkResult{
-					Name:  check.Name(),
-					Error: err,
-				}
-				resultCollector.AddResult(res)
-			}
-			return
-		}
-		// We got the VM, enqueue all node checks
-		for i := range c.nodeChecks {
-			check := c.nodeChecks[i]
-			klog.V(4).Infof("Adding node check %s:%s", node.Name, check.Name())
-			c.runSingleNodeSingleCheck(checkContext, resultCollector, node, vm, check)
-		}
-	})
-}
-
-func (c *vSphereProblemDetectorController) runSingleNodeSingleCheck(checkContext *check.CheckContext, resultCollector *ResultCollector, node *v1.Node, vm *mo.VirtualMachine, check check.NodeCheck) {
-	name := check.Name()
-	res := checkResult{
-		Name: name,
-	}
-	klog.V(4).Infof("%s:%s starting ", name, node.Name)
-	err := check.CheckNode(checkContext, node, vm)
-	if err != nil {
-		res.Error = err
-		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Set(1)
-		klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
-	} else {
-		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Set(0)
-		klog.V(2).Infof("%s:%s passed", name, node.Name)
-	}
-	nodeCheckTotalMetric.WithLabelValues(name, node.Name).Inc()
-	resultCollector.AddResult(res)
-}
-
-func (c *vSphereProblemDetectorController) finishNodeChecks(ctx *check.CheckContext) {
-	for i := range c.nodeChecks {
-		check := c.nodeChecks[i]
-		check.FinishCheck(ctx)
-	}
 }
 
 // reportResults sends events for all checks.
