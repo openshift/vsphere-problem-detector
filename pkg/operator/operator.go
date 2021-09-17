@@ -37,10 +37,9 @@ type vSphereProblemDetectorController struct {
 	eventRecorder        events.Recorder
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
-	clusterChecks          map[string]check.ClusterCheck
-	nodeChecks             []check.NodeCheck
-	checkerFunc            func(c *vSphereProblemDetectorController) vSphereCheckerInterface
-	lastClusterCheckResult *clusterCheckResult
+	clusterChecks map[string]check.ClusterCheck
+	nodeChecks    []check.NodeCheck
+	checkerFunc   func(c *vSphereProblemDetectorController) vSphereCheckerInterface
 
 	lastCheck time.Time
 	nextCheck time.Time
@@ -69,6 +68,7 @@ const (
 	minHostVersion        = "6.7.3"
 	minVCenterVersion     = "6.7.3"
 	hardwareVersionPrefix = "vmx-"
+	minHardwareVersion    = 15
 )
 
 var (
@@ -96,21 +96,20 @@ func NewVSphereProblemDetectorController(
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
 	c := &vSphereProblemDetectorController{
-		operatorClient:         operatorClient,
-		kubeClient:             kubeClient,
-		secretLister:           secretInformer.Lister(),
-		nodeLister:             nodeInformer.Lister(),
-		pvLister:               pvInformer.Lister(),
-		scLister:               scInformer.Lister(),
-		cloudConfigMapLister:   cloudConfigMapInformer.Lister(),
-		infraLister:            configInformer.Lister(),
-		eventRecorder:          eventRecorder.WithComponentSuffix(controllerName),
-		clusterChecks:          check.DefaultClusterChecks,
-		nodeChecks:             check.DefaultNodeChecks,
-		backoff:                defaultBackoff,
-		checkerFunc:            newVSphereChecker,
-		lastClusterCheckResult: &clusterCheckResult{},
-		nextCheck:              time.Time{}, // Explicitly set to zero to run checks on the first sync().
+		operatorClient:       operatorClient,
+		kubeClient:           kubeClient,
+		secretLister:         secretInformer.Lister(),
+		nodeLister:           nodeInformer.Lister(),
+		pvLister:             pvInformer.Lister(),
+		scLister:             scInformer.Lister(),
+		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
+		infraLister:          configInformer.Lister(),
+		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
+		clusterChecks:        check.DefaultClusterChecks,
+		nodeChecks:           check.DefaultNodeChecks,
+		backoff:              defaultBackoff,
+		checkerFunc:          newVSphereChecker,
+		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
@@ -144,13 +143,7 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	}
 
 	clusterInfo := util.NewClusterInfo()
-	delay, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
-
-	syncErrorValue := 0
-	if c.lastClusterCheckResult.checkError != nil {
-		syncErrorValue = 1
-	}
-	syncErrrorMetric.WithLabelValues("SyncError").Set(float64(syncErrorValue))
+	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
 
 	// if no checks were performed don't update conditons
 	if !checkPerformed {
@@ -165,18 +158,18 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	time.AfterFunc(delay, func() {
 		queue.Add(queueKey)
 	})
-	return c.updateConditions(ctx)
+	return c.updateConditions(ctx, lastCheckResult)
 }
 
-func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context) error {
+func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context, lastCheckResult clusterCheckResult) error {
 	availableCnd := operatorapi.OperatorCondition{
 		Type:   controllerName + operatorapi.OperatorStatusTypeAvailable,
 		Status: operatorapi.ConditionTrue,
 	}
 
-	if c.lastClusterCheckResult.checkError != nil {
+	if lastCheckResult.checkError != nil {
 		// E.g.: "failed to connect to vcenter.example.com: ServerFaultCode: Cannot complete login due to an incorrect user name or password."
-		availableCnd.Message = c.lastClusterCheckResult.checkError.Error()
+		availableCnd.Message = lastCheckResult.checkError.Error()
 		availableCnd.Reason = "SyncFailed"
 	}
 
@@ -187,10 +180,10 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context)
 		Status: operatorapi.ConditionTrue,
 	}
 
-	if c.lastClusterCheckResult.blockUpgrade {
-		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", c.lastClusterCheckResult.blockUpgradeReason)
+	if lastCheckResult.blockUpgrade {
+		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", lastCheckResult.blockUpgradeReason)
 		klog.Warningf(blockUpgradeMessage)
-		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", c.lastClusterCheckResult.blockUpgradeReason)
+		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", lastCheckResult.blockUpgradeReason)
 		allowUpgradeCond.Status = operatorapi.ConditionFalse
 		allowUpgradeCond.Message = blockUpgradeMessage
 		allowUpgradeCond.Reason = "VSphereOlderVersionDetected"
@@ -204,29 +197,29 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context)
 }
 
 // runSyncChecks runs vsphere checks and return next duration and whether checks were actually ran.
-func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, bool) {
+func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, clusterCheckResult, bool) {
 	var delay time.Duration
+	var lastCheckResult clusterCheckResult
 	if !time.Now().After(c.nextCheck) {
-		return delay, false
+		return delay, lastCheckResult, false
 	}
 
 	delay, err := c.runChecks(ctx, clusterInfo)
 	if err != nil {
-		c.lastClusterCheckResult.checkError = err
-		klog.Errorf("Failed to run checks: %s", err)
+		klog.Errorf("failed to run checks: %s", err)
+		lastCheckResult.checkError = err
+		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	} else {
-		c.lastClusterCheckResult.checkError = nil
+		syncErrrorMetric.WithLabelValues("SyncError").Set(0)
 	}
 
-	blockUpgrade, blockUpgradeReason := c.checkForDeprecation(clusterInfo)
-	c.lastClusterCheckResult.blockUpgrade = blockUpgrade
-	c.lastClusterCheckResult.blockUpgradeReason = blockUpgradeReason
+	lastCheckResult.blockUpgrade, lastCheckResult.blockUpgradeReason = c.checkForDeprecation(clusterInfo)
 	// if we are going to block upgrades but there was no error
 	// then we should try more frequently in case node/cluster status is updated
-	if blockUpgrade && err == nil {
+	if lastCheckResult.blockUpgrade && err == nil {
 		delay = c.backoff.Step()
 	}
-	return delay, true
+	return delay, lastCheckResult, true
 }
 
 func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util.ClusterInfo) (bool, string) {
@@ -249,7 +242,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 			klog.Errorf("error parsing hardware version %s: %v", hwVersion, err)
 			continue
 		}
-		if versionInt < 15 {
+		if versionInt < minHardwareVersion {
 			return true, fmt.Sprintf("one or more VMs are on hardware version %s", hwVersion)
 		}
 	}

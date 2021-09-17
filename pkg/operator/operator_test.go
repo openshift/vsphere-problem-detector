@@ -226,8 +226,7 @@ func TestSyncChecks(t *testing.T) {
 				checkerFunc: func(c *vSphereProblemDetectorController) vSphereCheckerInterface {
 					return &testvSphereChecker{err: tc.checkError}
 				},
-				backoff:                defaultBackoff,
-				lastClusterCheckResult: &clusterCheckResult{},
+				backoff: defaultBackoff,
 			}
 
 			// if we should not perform checks, add randomly 10s to next check duration
@@ -235,7 +234,7 @@ func TestSyncChecks(t *testing.T) {
 				vsphereProblemOperator.nextCheck = time.Now().Add(10 * time.Second)
 			}
 
-			delay, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info)
+			delay, lastCheckResult, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info)
 			if tc.expectedCheckPerfom != checksPerformed {
 				t.Fatalf("for checks performed expected %v got %v", tc.expectedCheckPerfom, checksPerformed)
 			}
@@ -243,10 +242,10 @@ func TestSyncChecks(t *testing.T) {
 			if !compareTimeDiffWithinTimeFactor(tc.expectedDuration, delay) {
 				t.Fatalf("expected next check duration to be %v got %v", tc.expectedDuration, delay)
 			}
-			if tc.isDeprecated != vsphereProblemOperator.lastClusterCheckResult.blockUpgrade {
-				t.Fatalf("expected deprecated to be %v got %v", tc.isDeprecated, vsphereProblemOperator.lastClusterCheckResult.blockUpgrade)
+			if tc.isDeprecated != lastCheckResult.blockUpgrade {
+				t.Fatalf("expected deprecated to be %v got %v", tc.isDeprecated, lastCheckResult.blockUpgrade)
 			}
-			checkError := vsphereProblemOperator.lastClusterCheckResult.checkError
+			checkError := lastCheckResult.checkError
 			if checkError != nil && !tc.hasError {
 				t.Fatalf("expected no error got %v", checkError)
 			}
