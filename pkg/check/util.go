@@ -42,7 +42,7 @@ func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datasto
 	defer cancel()
 	err := pc.RetrieveOne(tctx, ref, properties, &dsMo)
 	if err != nil {
-		return dsMo, err
+		return dsMo, fmt.Errorf("failed to get datastore object from managed reference: %v", err)
 	}
 	return dsMo, nil
 }

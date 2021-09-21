@@ -204,7 +204,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	defer cancel()
 	c, err := pbm.NewClient(tctx, ctx.VMClient)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getPolicyDatastores: error creating pbm client: %v", err)
 	}
 
 	// Load all datastores in vSphere
@@ -215,7 +215,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	defer cancel()
 	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getPolicyDatastores: error creating container view: %v", err)
 	}
 
 	var content []vim.ObjectContent
@@ -224,7 +224,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	err = v.Retrieve(tctx, kind, []string{"Name"}, &content)
 	_ = v.Destroy(tctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getPolicyDatastores: error getting policy names: %v", err)
 	}
 
 	// Store the datastores in this map HubID -> DatastoreName
@@ -250,7 +250,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	defer cancel()
 	res, err := c.CheckRequirements(tctx, hubs, nil, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getPolicyDatastores: error fetching matching datastores: %v", err)
 	}
 
 	var dataStores []string
@@ -266,7 +266,7 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	defer cancel()
 	c, err := pbm.NewClient(tctx, ctx.VMClient)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating pbm client: %v", err)
 	}
 	rtype := types.PbmProfileResourceType{
 		ResourceType: string(types.PbmProfileResourceTypeEnumSTORAGE),
@@ -277,14 +277,14 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	defer cancel()
 	ids, err := c.QueryProfile(tctx, rtype, string(category))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error querying storage profiles: %v", err)
 	}
 
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	profiles, err := c.RetrieveContent(tctx, ids)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error retrieving detailed storage profiles: %v", err)
 	}
 
 	for _, p := range profiles {
@@ -294,7 +294,11 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	}
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
-	return c.RetrieveContent(tctx, []types.PbmProfileId{{UniqueId: name}})
+	profileContent, err := c.RetrieveContent(tctx, []types.PbmProfileId{{UniqueId: name}})
+	if err != nil {
+		return nil, fmt.Errorf("error getting pbm profiles: %v", err)
+	}
+	return profileContent, nil
 }
 
 func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
