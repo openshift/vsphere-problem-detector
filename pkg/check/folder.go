@@ -66,7 +66,9 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 				dsName)
 			return nil
 		}
-		return fmt.Errorf("failed to browse datastore %s at path %s: %s", dsName, path, err)
+		// we may not have sufficient permissions to browse datastore path
+		klog.V(2).Infof("failed to browse datastore %s at path %s: %v", dsName, path, err)
+		return nil
 	}
 
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
