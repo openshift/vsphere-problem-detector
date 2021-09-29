@@ -184,7 +184,9 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 
 	dataStores, err := getPolicyDatastores(ctx, pbm[0].GetPbmProfile().ProfileId)
 	if err != nil {
-		return err
+		klog.V(2).Infof("unable to list policy datastores: %v", err)
+		// we may not have sufficient permission to list all datastores and hence we can ignore the check
+		return nil
 	}
 	klog.V(4).Infof("Policy %q is compatible with datastores %v", policyName, dataStores)
 
@@ -224,7 +226,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	err = v.Retrieve(tctx, kind, []string{"Name"}, &content)
 	_ = v.Destroy(tctx)
 	if err != nil {
-		return nil, fmt.Errorf("getPolicyDatastores: error getting policy names: %v", err)
+		return nil, fmt.Errorf("getPolicyDatastores: error listing datastores: %v", err)
 	}
 
 	// Store the datastores in this map HubID -> DatastoreName
