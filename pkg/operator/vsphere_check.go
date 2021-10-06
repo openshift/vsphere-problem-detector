@@ -9,6 +9,7 @@ import (
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -305,6 +306,10 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
 	client, err := govmomi.NewClient(tctx, serverURL, insecure)
+
+	vpdVersion := version.Get()
+	client.UserAgent = fmt.Sprintf("vsphere-problem-detector/%s", vpdVersion)
+
 	if err != nil {
 		return nil, err
 	}
