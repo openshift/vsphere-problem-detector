@@ -49,8 +49,8 @@ func NewOperatorCommand() *cobra.Command {
 	ctrlCmd.Short = "Start the vSphere Problem Detector"
 
 	versionCmd := &cobra.Command{
-		Use:	"version",
-		Short:  "Print the version number of vSphere Problem Detector",
+		Use:   "version",
+		Short: "Print the version number of vSphere Problem Detector",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println(version.Get())
 		},
