@@ -305,13 +305,23 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
-	client, err := govmomi.NewClient(tctx, serverURL, insecure)
 
-	vpdVersion := version.Get()
-	client.UserAgent = fmt.Sprintf("vsphere-problem-detector/%s", vpdVersion)
+	// Set user to nil there for prevent login during client creation.
+	// See https://github.com/vmware/govmomi/blob/master/client.go#L91
+	serverURL.User = nil
+	client, err := govmomi.NewClient(tctx, serverURL, insecure)
 
 	if err != nil {
 		return nil, err
 	}
+
+	// Set up user agent before login for being able to track vpdo component in vcenter sessions list
+	vpdVersion := version.Get()
+	client.UserAgent = fmt.Sprintf("vsphere-problem-detector/%s", vpdVersion)
+
+	if err := client.Login(tctx, url.UserPassword(username, password)); err != nil {
+		return nil, fmt.Errorf("unable to login to vCenter: %w", err)
+	}
+
 	return client, nil
 }
