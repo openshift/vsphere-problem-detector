@@ -12,7 +12,6 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
-	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
@@ -42,10 +41,16 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		return resultCollector, err
 	}
 
+	defer func() {
+		if err := vmClient.Logout(ctx); err != nil {
+			klog.Errorf("Failed to logout: %v", err)
+		}
+	}()
+
 	checkContext := &check.CheckContext{
 		Context:     ctx,
 		VMConfig:    vmConfig,
-		VMClient:    vmClient,
+		VMClient:    vmClient.Client,
 		KubeClient:  v.controller,
 		ClusterInfo: clusterInfo,
 	}
@@ -65,7 +70,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	return resultCollector, nil
 }
 
-func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *vim25.Client, error) {
+func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, error) {
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -102,7 +107,7 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient.Client, nil
+	return cfg, vmClient, nil
 }
 
 func (c *vSphereChecker) getCredentials(cfg *vsphere.VSphereConfig) (string, string, error) {
