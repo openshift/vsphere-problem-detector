@@ -12,7 +12,6 @@ import (
 	"k8s.io/component-base/logs"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-
 	"github.com/openshift/vsphere-problem-detector/pkg/operator"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 )
@@ -49,7 +48,16 @@ func NewOperatorCommand() *cobra.Command {
 	ctrlCmd.Use = "start"
 	ctrlCmd.Short = "Start the vSphere Problem Detector"
 
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print the version number of vSphere Problem Detector",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(version.Get())
+		},
+	}
+
 	cmd.AddCommand(ctrlCmd)
+	cmd.AddCommand(versionCmd)
 
 	return cmd
 }
