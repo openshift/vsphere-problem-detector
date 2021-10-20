@@ -299,7 +299,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %s", err)
 	}
-	serverURL.User = url.UserPassword(username, password)
+
 	insecure := cfg.Global.InsecureFlag
 
 	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
