@@ -9,6 +9,7 @@ import (
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -303,15 +304,29 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %s", err)
 	}
-	serverURL.User = url.UserPassword(username, password)
+
 	insecure := cfg.Global.InsecureFlag
 
 	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
+
+	// Set user to nil there for prevent login during client creation.
+	// See https://github.com/vmware/govmomi/blob/master/client.go#L91
+	serverURL.User = nil
 	client, err := govmomi.NewClient(tctx, serverURL, insecure)
+
 	if err != nil {
 		return nil, err
 	}
+
+	// Set up user agent before login for being able to track vpdo component in vcenter sessions list
+	vpdVersion := version.Get()
+	client.UserAgent = fmt.Sprintf("vsphere-problem-detector/%s", vpdVersion)
+
+	if err := client.Login(tctx, url.UserPassword(username, password)); err != nil {
+		return nil, fmt.Errorf("unable to login to vCenter: %w", err)
+	}
+
 	return client, nil
 }
