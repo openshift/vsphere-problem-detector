@@ -28,6 +28,7 @@ var (
 		// to keep alerting on them
 		// "CheckPVs":               CheckPVs,
 		"CheckStorageClasses": CheckStorageClasses,
+		"CountRWXVolumes":     CountRWXVolumes,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
