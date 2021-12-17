@@ -175,21 +175,6 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context,
 
 	updateFuncs := []v1helpers.UpdateStatusFunc{}
 	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(availableCnd))
-	allowUpgradeCond := operatorapi.OperatorCondition{
-		Type:   controllerName + operatorapi.OperatorStatusTypeUpgradeable,
-		Status: operatorapi.ConditionTrue,
-	}
-
-	if lastCheckResult.blockUpgrade {
-		blockUpgradeMessage := fmt.Sprintf("Marking cluster un-upgradeable because %s", lastCheckResult.blockUpgradeReason)
-		klog.Warningf(blockUpgradeMessage)
-		c.eventRecorder.Warningf("VSphereOlderVersionDetected", "Marking cluster un-upgradeable because %s", lastCheckResult.blockUpgradeReason)
-		allowUpgradeCond.Status = operatorapi.ConditionFalse
-		allowUpgradeCond.Message = blockUpgradeMessage
-		allowUpgradeCond.Reason = "VSphereOlderVersionDetected"
-	}
-
-	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(allowUpgradeCond))
 	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient, updateFuncs...); updateErr != nil {
 		return updateErr
 	}
