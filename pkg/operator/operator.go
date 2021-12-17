@@ -180,10 +180,16 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context) (time.
 		return nextErrorDelay, err
 	}
 
+	defer func() {
+		if err := vmClient.Logout(ctx); err != nil {
+			klog.Errorf("Failed to logout: %v", err)
+		}
+	}()
+
 	checkContext := &check.CheckContext{
 		Context:    ctx,
 		VMConfig:   vmConfig,
-		VMClient:   vmClient,
+		VMClient:   vmClient.Client,
 		KubeClient: c,
 	}
 
