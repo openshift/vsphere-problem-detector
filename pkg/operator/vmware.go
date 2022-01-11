@@ -11,7 +11,6 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
-	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
@@ -20,7 +19,7 @@ import (
 	"k8s.io/legacy-cloud-providers/vsphere"
 )
 
-func (c *vSphereProblemDetectorController) connect(ctx context.Context) (*vsphere.VSphereConfig, *vim25.Client, error) {
+func (c *vSphereProblemDetectorController) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, error) {
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -41,7 +40,7 @@ func (c *vSphereProblemDetectorController) connect(ctx context.Context) (*vspher
 		return nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
 	}
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient.Client, nil
+	return cfg, vmClient, nil
 }
 
 func (c *vSphereProblemDetectorController) parseConfig(data string) (*vsphere.VSphereConfig, error) {
