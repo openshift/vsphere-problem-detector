@@ -15,7 +15,6 @@ require (
 	github.com/openshift/library-go v0.0.0-20220114151217-4362aa519714
 	github.com/prometheus/client_golang v1.11.0
 	github.com/spf13/cobra v1.2.1
-	github.com/spf13/pflag v1.0.5
 	github.com/vmware/govmomi v0.26.1
 	golang.org/x/net v0.0.0-20220114011407-0dd24b26b47d // indirect
 	gopkg.in/gcfg.v1 v1.2.3
@@ -69,6 +68,7 @@ require (
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.0 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.0 // indirect
