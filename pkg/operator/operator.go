@@ -175,7 +175,7 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context,
 
 	updateFuncs := []v1helpers.UpdateStatusFunc{}
 	updateFuncs = append(updateFuncs, v1helpers.UpdateConditionFn(availableCnd))
-	if _, _, updateErr := v1helpers.UpdateStatus(c.operatorClient, updateFuncs...); updateErr != nil {
+	if _, _, updateErr := v1helpers.UpdateStatus(ctx, c.operatorClient, updateFuncs...); updateErr != nil {
 		return updateErr
 	}
 	return nil
