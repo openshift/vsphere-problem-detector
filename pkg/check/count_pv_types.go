@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	"k8s.io/component-base/metrics"
+	"k8s.io/component-base/metrics/legacyregistry"
 )
 
 const (
@@ -21,6 +22,10 @@ var (
 	)
 	rwxVolumeRegx = regexp.MustCompile(`file\:`)
 )
+
+func init() {
+	legacyregistry.MustRegister(rwxPVCountMetric)
+}
 
 func CountRWXVolumes(ctx *CheckContext) error {
 	rwxPVCount, err := countRWXPVsFromCluster(ctx)
