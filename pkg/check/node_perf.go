@@ -30,7 +30,15 @@ type MetricCheckDef struct {
 
 const (
 	metricMaxSamples = 300
+	/**
+	metrics collection interval in seconds(approximate)
+	*/
 	metricIntervalID = 20
+
+	/**
+	minimum required samples before a latency average is calculated
+	*/
+	minimumRequiredSamples = 30
 )
 
 var (
@@ -170,12 +178,22 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		for _, perfMetricSeries := range basePerfMetricSeries {
 			metricSeries := perfMetricSeries.(*types.PerfMetricIntSeries)
 			klog.V(4).Infof("metric samples[%s]: %+v", mcd.metricName, metricSeries)
-			for _, value := range metricSeries.Value {
-				if value > mcd.errorLevel {
-					hasError = true
-					break
-				}
+			latencyAccum := int64(0)
+			samples := int64(len(metricSeries.Value))
+			if samples < minimumRequiredSamples {
+				klog.V(4).Infof("skipping metric[%s] until minimum required[%d] samples available", mcd.metricName, minimumRequiredSamples)
+				continue
 			}
+			for _, value := range metricSeries.Value {
+				latencyAccum = latencyAccum + value
+			}
+			averageLatency := latencyAccum / samples
+			if averageLatency > mcd.errorLevel {
+				hasError = true
+				klog.V(2).Infof("high average disk latency %d ms measured for node%s", averageLatency, node.Name)
+				break
+			}
+			klog.V(2).Infof("average disk latency of %d ms measured for node %s", averageLatency, node.Name)
 		}
 	}
 	if hasError {
