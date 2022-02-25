@@ -45,7 +45,9 @@ func (c *CollectNodeHWVersion) Name() string {
 func (c *CollectNodeHWVersion) StartCheck() error {
 	c.hwVersionsLock.Lock()
 	defer c.hwVersionsLock.Unlock()
+
 	c.hwVersions = make(map[string]int)
+	hwVersionMetric.Reset()
 	return nil
 }
 

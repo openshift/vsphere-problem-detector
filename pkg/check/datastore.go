@@ -76,6 +76,9 @@ func (d dataStoreTypeCollector) getDataStoreTypeCount() map[string]int {
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
 func CheckStorageClasses(ctx *CheckContext) error {
+	// reset the metric so as if types have changed we don't emit them again
+	dataStoreTypesMetric.Reset()
+
 	infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
 	if err != nil {
 		return err
