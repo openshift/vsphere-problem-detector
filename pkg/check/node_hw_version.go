@@ -38,6 +38,7 @@ func (c *CollectNodeHWVersion) Name() string {
 }
 
 func (c *CollectNodeHWVersion) StartCheck() error {
+	hwVersionMetric.Reset()
 	return nil
 }
 
