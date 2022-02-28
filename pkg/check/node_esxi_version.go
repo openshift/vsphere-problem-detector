@@ -39,6 +39,7 @@ func (c *CollectNodeESXiVersion) Name() string {
 }
 
 func (c *CollectNodeESXiVersion) StartCheck() error {
+	esxiVersionMetric.Reset()
 	return nil
 }
 
