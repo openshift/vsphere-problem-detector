@@ -13,8 +13,9 @@ import (
 // CollectNodeHWVersion emits metric with HW version of each VM
 type CollectNodeHWVersion struct {
 	// map HW version -> count of nodes with this version
-	hwVersions     map[string]int
-	hwVersionsLock sync.Mutex
+	hwVersions         map[string]int
+	hwVersionsLock     sync.Mutex
+	lastMetricEmission map[string]int
 }
 
 var _ NodeCheck = &CollectNodeHWVersion{}
@@ -47,7 +48,6 @@ func (c *CollectNodeHWVersion) StartCheck() error {
 	defer c.hwVersionsLock.Unlock()
 
 	c.hwVersions = make(map[string]int)
-	hwVersionMetric.Reset()
 	return nil
 }
 
@@ -65,9 +65,19 @@ func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *m
 func (c *CollectNodeHWVersion) FinishCheck(ctx *CheckContext) {
 	c.hwVersionsLock.Lock()
 	defer c.hwVersionsLock.Unlock()
+	for k := range c.lastMetricEmission {
+		c.lastMetricEmission[k] = 0
+	}
 
 	for hwVersion, count := range c.hwVersions {
+		c.lastMetricEmission[hwVersion] = count
 		hwVersionMetric.WithLabelValues(hwVersion).Set(float64(count))
+	}
+
+	for k, v := range c.lastMetricEmission {
+		if v == 0 {
+			hwVersionMetric.WithLabelValues(k).Set(0)
+		}
 	}
 	return
 }

@@ -17,8 +17,9 @@ import (
 type CollectNodeESXiVersion struct {
 	// map ESXI host name ("host-12345", not hostname nor IP address!) -> version
 	// Version "" means that a CheckNode call is retrieving it right now.
-	esxiVersions     map[string]esxiVersionInfo
-	esxiVersionsLock sync.Mutex
+	esxiVersions       map[string]esxiVersionInfo
+	esxiVersionsLock   sync.Mutex
+	lastMetricEmission map[[2]string]int
 }
 
 var _ NodeCheck = &CollectNodeESXiVersion{}
@@ -90,14 +91,26 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	// Count the versions
 	versions := make(map[esxiVersionInfo]int)
+	for k := range c.lastMetricEmission {
+		c.lastMetricEmission[k] = 0
+	}
+
 	for _, esxiVersion := range c.esxiVersions {
 		versions[esxiVersion]++
 	}
 
 	// Report the count
 	for esxiVersion, count := range versions {
+		c.lastMetricEmission[[2]string{esxiVersion.version, esxiVersion.apiVersion}] = count
 		esxiVersionMetric.WithLabelValues(esxiVersion.version, esxiVersion.apiVersion).Set(float64(count))
 	}
+
+	for k, v := range c.lastMetricEmission {
+		if v == 0 {
+			esxiVersionMetric.WithLabelValues(k[0], k[1]).Set(0)
+		}
+	}
+
 	return
 }
 
