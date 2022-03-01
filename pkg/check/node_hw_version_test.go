@@ -5,19 +5,18 @@ import (
 	"testing"
 
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/component-base/metrics/legacyregistry"
 )
 
 func TestCollectNodeHWVersion(t *testing.T) {
 	tests := []struct {
 		name            string
-		hwVersion       string
+		hwVersions      []string
 		expectedMetrics string
+		initialMetric   map[string]int
 	}{
 		{
-			name:      "hw ver 13",
-			hwVersion: "vmx-13",
+			name: "hw ver 13",
 			// There are two VMs. The first one gets hwVersion from the test, the seconds one keeps the default (vmx-13)
 			expectedMetrics: `
 # HELP vsphere_node_hw_version_total [ALPHA] Number of vSphere nodes with given HW version.
@@ -26,8 +25,8 @@ vsphere_node_hw_version_total{hw_version="vmx-13"} 2
 `,
 		},
 		{
-			name:      "hw ver 15",
-			hwVersion: "vmx-15",
+			name:       "hw ver 15",
+			hwVersions: []string{"vmx-15"},
 			expectedMetrics: `
 # HELP vsphere_node_hw_version_total [ALPHA] Number of vSphere nodes with given HW version.
 # TYPE vsphere_node_hw_version_total gauge
@@ -35,12 +34,31 @@ vsphere_node_hw_version_total{hw_version="vmx-13"} 1
 vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 `,
 		},
+		{
+			name:       "if hardware version of nodes change",
+			hwVersions: []string{"vmx-15", "vmx-15"},
+			expectedMetrics: `
+# HELP vsphere_node_hw_version_total [ALPHA] Number of vSphere nodes with given HW version.
+# TYPE vsphere_node_hw_version_total gauge
+vsphere_node_hw_version_total{hw_version="vmx-13"} 0
+vsphere_node_hw_version_total{hw_version="vmx-15"} 2
+`,
+			initialMetric: map[string]int{
+				"vmx-13": 2,
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeHWVersion{}
+			check := CollectNodeHWVersion{
+				lastMetricEmission: map[string]int{},
+			}
+			if len(test.initialMetric) > 0 {
+				check.lastMetricEmission = test.initialMetric
+			}
+
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
 			}
@@ -51,15 +69,14 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 			defer cleanup()
 
 			// Set HW version of the first VM. Leave the other VMs with the default version (vmx-13).
-			node := kubeClient.nodes[0]
-			err = customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
-				ExtraConfig: []types.BaseOptionValue{
-					&types.OptionValue{
-						Key: "SET.config.version", Value: test.hwVersion,
-					},
-				}})
-			if err != nil {
-				t.Fatalf("Failed to customize node: %s", err)
+			if len(test.hwVersions) > 0 {
+				for i := range test.hwVersions {
+					node := kubeClient.nodes[i]
+					err := setHardwareVersion(ctx, node, test.hwVersions[i])
+					if err != nil {
+						t.Fatalf("Failed to customize node: %s", err)
+					}
+				}
 			}
 
 			// Reset metrics from previous tests. Note: the tests can't run in parallel!
