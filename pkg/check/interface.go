@@ -33,8 +33,12 @@ var (
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
 		&CheckNodeProviderID{},
-		&CollectNodeHWVersion{},
-		&CollectNodeESXiVersion{},
+		&CollectNodeHWVersion{
+			lastMetricEmission: map[string]int{},
+		},
+		&CollectNodeESXiVersion{
+			lastMetricEmission: make(map[[2]string]int),
+		},
 		&CheckNodeDiskPerf{},
 	}
 
