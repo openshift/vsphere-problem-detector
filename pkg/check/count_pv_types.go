@@ -15,7 +15,7 @@ var (
 	rwxPVCountMetric = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
 			Name:           "vsphere_rwx_volumes_total",
-			Help:           "Number of RWX volumes used by vSphere.",
+			Help:           "Number of vSAN volumes used by user in vSphere cluster",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{},
