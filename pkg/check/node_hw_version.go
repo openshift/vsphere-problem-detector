@@ -10,6 +10,7 @@ import (
 
 // CollectNodeHWVersion emits metric with HW version of each VM
 type CollectNodeHWVersion struct {
+	lastMetricEmission map[string]int
 }
 
 var _ NodeCheck = &CollectNodeHWVersion{}
@@ -51,8 +52,19 @@ func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *m
 func (c *CollectNodeHWVersion) FinishCheck(ctx *CheckContext) {
 	hwversions := ctx.ClusterInfo.GetHardwareVersion()
 
+	for k := range c.lastMetricEmission {
+		c.lastMetricEmission[k] = 0
+	}
+
 	for hwVersion, count := range hwversions {
+		c.lastMetricEmission[hwVersion] = count
 		hwVersionMetric.WithLabelValues(hwVersion).Set(float64(count))
+	}
+
+	for k, v := range c.lastMetricEmission {
+		if v == 0 {
+			hwVersionMetric.WithLabelValues(k).Set(0)
+		}
 	}
 	return
 }

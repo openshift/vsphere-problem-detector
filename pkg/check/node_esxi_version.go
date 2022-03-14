@@ -15,6 +15,7 @@ import (
 
 // CollectNodeESXiVersion emits metric with version of each ESXi host that runs at least a single VM with node.
 type CollectNodeESXiVersion struct {
+	lastMetricEmission map[[2]string]int
 }
 
 var _ NodeCheck = &CollectNodeESXiVersion{}
@@ -78,6 +79,10 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	versions := make(map[util.ESXiVersionInfo]int)
+	for k := range c.lastMetricEmission {
+		c.lastMetricEmission[k] = 0
+	}
+
 	esxiVersions := ctx.ClusterInfo.GetHostVersions()
 	for _, v := range esxiVersions {
 		versions[v]++
@@ -86,6 +91,14 @@ func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	// Report the count
 	for v, count := range versions {
 		esxiVersionMetric.WithLabelValues(v.Version, v.APIVersion).Set(float64(count))
+		c.lastMetricEmission[[2]string{v.Version, v.APIVersion}] = count
 	}
+
+	for k, v := range c.lastMetricEmission {
+		if v == 0 {
+			esxiVersionMetric.WithLabelValues(k[0], k[1]).Set(0)
+		}
+	}
+
 	return
 }

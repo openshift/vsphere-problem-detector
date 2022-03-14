@@ -204,7 +204,16 @@ func customizeVM(ctx *CheckContext, node *v1.Node, spec *types.VirtualMachineCon
 
 	err = task.Wait(ctx.Context)
 	return err
+}
 
+func setHardwareVersion(ctx *CheckContext, node *v1.Node, hardwareVersion string) error {
+	err := customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
+		ExtraConfig: []types.BaseOptionValue{
+			&types.OptionValue{
+				Key: "SET.config.version", Value: hardwareVersion,
+			},
+		}})
+	return err
 }
 
 func customizeHostVersion(hostSystemId string, version string, apiVersion string) error {
