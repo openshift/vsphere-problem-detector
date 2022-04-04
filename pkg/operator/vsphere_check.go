@@ -47,9 +47,10 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 			klog.Errorf("Failed to logout: %v", err)
 		}
 	}()
-
+	authManager := object.NewAuthorizationManager(vmClient.Client)
 	checkContext := &check.CheckContext{
 		Context:     ctx,
+		AuthManager: authManager,
 		VMConfig:    vmConfig,
 		VMClient:    vmClient.Client,
 		KubeClient:  v.controller,
@@ -107,6 +108,10 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 	} else {
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
+	if _, ok := cfg.VirtualCenter[cfg.Workspace.VCenterIP]; ok {
+		cfg.VirtualCenter[cfg.Workspace.VCenterIP].User = username
+	}
+
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
 	return cfg, vmClient, nil
 }
