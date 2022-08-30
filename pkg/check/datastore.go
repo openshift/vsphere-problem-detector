@@ -318,6 +318,9 @@ func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.I
 	if err := checkForDatastoreCluster(ctx, dsName, dsTypes); err != nil {
 		errs = append(errs, err)
 	}
+	if err := checkDatastorePrivileges(ctx, dsName); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.NewAggregate(errs)
 }
 

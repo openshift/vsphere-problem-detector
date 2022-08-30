@@ -27,8 +27,9 @@ var (
 		// PV checks are disabled because existing PVs can't be fixed easily and it could be problematic
 		// to keep alerting on them
 		// "CheckPVs":               CheckPVs,
-		"CheckStorageClasses": CheckStorageClasses,
-		"CountRWXVolumes":     CountRWXVolumes,
+		"CheckStorageClasses":     CheckStorageClasses,
+		"CountRWXVolumes":         CountRWXVolumes,
+		"CheckAccountPermissions": CheckAccountPermissions,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
@@ -40,6 +41,7 @@ var (
 			lastMetricEmission: make(map[[2]string]int),
 		},
 		&CheckNodeDiskPerf{},
+		&CheckComputeClusterPermissions{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
@@ -63,6 +65,7 @@ type CheckContext struct {
 	Context     context.Context
 	VMConfig    *vsphere.VSphereConfig
 	VMClient    *vim25.Client
+	AuthManager AuthManager
 	KubeClient  KubeClient
 	ClusterInfo *util.ClusterInfo
 }

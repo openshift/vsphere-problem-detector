@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -56,6 +57,9 @@ var (
 )
 
 func TestCheckDefaultDatastore(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
 	for _, test := range datastoreTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
@@ -69,6 +73,12 @@ func TestCheckDefaultDatastore(t *testing.T) {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
+
+			authManager, err := getAuthManagerWithValidPrivileges(ctx, mockCtrl)
+			if err != nil {
+				t.Fatalf("authManager setup failed: %s", err)
+			}
+			ctx.AuthManager = authManager
 
 			ctx.VMConfig.Workspace.DefaultDatastore = test.datastore
 			// Act
@@ -86,6 +96,9 @@ func TestCheckDefaultDatastore(t *testing.T) {
 }
 
 func TestCheckStorageClassesWithDatastore(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
 	for _, test := range datastoreTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
@@ -110,6 +123,12 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
+
+			authManager, err := getAuthManagerWithValidPrivileges(ctx, mockCtrl)
+			if err != nil {
+				t.Fatalf("authManager setup failed: %s", err)
+			}
+			ctx.AuthManager = authManager
 
 			// Reset metrics from previous tests. Note: the tests can't run in parallel!
 			legacyregistry.Reset()
