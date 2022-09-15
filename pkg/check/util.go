@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
@@ -68,4 +69,25 @@ func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.C
 		return &computeClusterMo, nil
 	}
 	return nil, errors.New("compute cluster resource not associated with managed reference")
+}
+
+func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.ResourcePool, error) {
+	var vmMo mo.VirtualMachine
+	var resourcePoolMo mo.ResourcePool
+	pc := property.DefaultCollector(ctx.VMClient)
+	properties := []string{"resourcePool"}
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	err := pc.RetrieveOne(tctx, ref, properties, &vmMo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get virtual machine object from managed reference: %v", err)
+	}
+
+	err = pc.RetrieveOne(tctx, vmMo.ResourcePool.Reference(), []string{}, &resourcePoolMo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource pool object from managed reference: %v", err)
+	}
+
+	return &resourcePoolMo, nil
 }

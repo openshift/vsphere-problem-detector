@@ -25,12 +25,18 @@ func (c *CheckComputeClusterPermissions) StartCheck() error {
 	return nil
 }
 
-func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) error {
+func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vm *mo.VirtualMachine, readOnly bool) error {
 	cluster, err := getComputeCluster(ctx, vm.Runtime.Host.Reference())
 	if err != nil {
 		klog.Infof("compute cluster resource could not be obtained for %v", vm.Reference())
 		return nil
 	}
+
+	if readOnly {
+		// Having read only privilege is implied if we don't trigger the error above.
+		return nil
+	}
+
 	if _, ok := c.computeClusters[cluster.Name]; ok {
 		klog.Infof("privileges for compute cluster %v have already been checked", cluster.Name)
 		return nil
@@ -50,7 +56,14 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 
 func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	var errs []error
-	err := c.checkComputeClusterPrivileges(ctx, vm)
+	readOnly := false
+
+	// If pre-existing resource pool was defined, only check cluster for read privilege
+	if ctx.VMConfig.Workspace.ResourcePoolPath != "" {
+		readOnly = true
+	}
+
+	err := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
 	if err != nil {
 		errs = append(errs, err)
 	}

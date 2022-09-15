@@ -228,7 +228,7 @@ func TestPermissionValidate(t *testing.T) {
 		{
 			name:             "missing datacenter Permissions",
 			authManager:      missingDatacenterPermissionsClient,
-			expectErr:        "missing privileges for datacenter DC0: Folder.Delete",
+			expectErr:        "missing privileges for datacenter DC0: System.Read",
 			validationMethod: clusterLevelPrivilegeCheck,
 		},
 		{
