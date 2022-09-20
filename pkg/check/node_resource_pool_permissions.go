@@ -26,17 +26,16 @@ func (c *CheckResourcePoolPermissions) StartCheck() error {
 }
 
 func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) error {
-	resourcePool, err := getResourcePool(ctx, vm.Reference())
+	resourcePool, resourcePoolPath, err := getResourcePool(ctx, vm.Reference())
 	if err != nil {
 		klog.Info("resource pool could not be obtained for %v", vm.Reference())
 		return nil
 	}
 
-	name := resourcePool.Reference().Value
-	if _, ok := c.resourcePools[name]; ok {
-		klog.Infof("privileges for resource pool %s have already been checked", name)
+	if _, ok := c.resourcePools[resourcePoolPath]; ok {
+		klog.Infof("privileges for resource pool %s have already been checked", resourcePoolPath)
 	}
-	c.resourcePools[name] = resourcePool
+	c.resourcePools[resourcePoolPath] = resourcePool
 
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
 		return errors.New("vcenter instance not found in the virtual center map")
@@ -44,7 +43,7 @@ func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckCon
 	username := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP].User
 
 	if err := comparePrivileges(ctx.Context, username, resourcePool.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
-		return fmt.Errorf("missing privileges for resource pool %s: %s", name, err.Error())
+		return fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error())
 	}
 
 	return nil

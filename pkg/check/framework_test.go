@@ -63,6 +63,7 @@ server = "localhost"
 datacenter = "DC0"
 default-datastore = "LocalDS_0"
 folder = "/DC0/vm"
+resourcepool-path = "/DC0/host/DC0_H0/Resources"
 
 [VirtualCenter "dc0"]
 datacenters = "DC0"

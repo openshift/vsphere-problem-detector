@@ -77,6 +77,14 @@ func buildAuthManagerClient(ctx context.Context, mockCtrl *gomock.Controller, fi
 			for _, cluster := range clusters {
 				buildPermissionGroup(authManagerClient, cluster.Reference(), username, group, groupName, overrideGroup)
 			}
+		case permissionResourcePool:
+			resourcePools, err := finder.ResourcePoolList(ctx, "/...")
+			if err != nil {
+				return nil, err
+			}
+			for _, resourcePool := range resourcePools {
+				buildPermissionGroup(authManagerClient, resourcePool.Reference(), username, group, groupName, overrideGroup)
+			}
 		case permissionPortgroup:
 			networks, err := finder.NetworkList(ctx, "/...")
 			if err != nil {
@@ -95,6 +103,7 @@ func buildAuthManagerClient(ctx context.Context, mockCtrl *gomock.Controller, fi
 			}
 		}
 	}
+
 	return authManagerClient, nil
 }
 
@@ -103,8 +112,7 @@ func clusterLevelPrivilegeCheck(ctx *CheckContext) error {
 }
 
 func vmLevelPrivilegeCheck(ctx *CheckContext) error {
-	nodePrivileges := &CheckComputeClusterPermissions{}
-	nodePrivileges.StartCheck()
+	checks := []NodeCheck{&CheckComputeClusterPermissions{}, &CheckResourcePoolPermissions{}}
 	finder := find.NewFinder(ctx.VMClient)
 	virtualMachines, err := finder.VirtualMachineList(ctx.Context, root)
 	if err != nil {
@@ -139,7 +147,20 @@ func vmLevelPrivilegeCheck(ctx *CheckContext) error {
 	if err != nil {
 		return errors.New("error getting vm mo reference")
 	}
-	return nodePrivileges.CheckNode(ctx, nil, &vmMo)
+
+	for _, check := range checks {
+		err = check.StartCheck()
+		if err != nil {
+			return err
+		}
+
+		err = check.CheckNode(ctx, nil, &vmMo)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func TestPermissionValidate(t *testing.T) {
@@ -184,6 +205,12 @@ func TestPermissionValidate(t *testing.T) {
 		return
 	}
 
+	missingResourcePoolPermissionClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionResourcePool, folders)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	missingDatastorePermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionDatastore, folders)
 	if err != nil {
 		t.Error(err)
@@ -203,10 +230,11 @@ func TestPermissionValidate(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		expectErr        string
-		validationMethod func(*CheckContext) error
-		authManager      AuthManager
+		name                 string
+		expectErr            string
+		validationMethod     func(*CheckContext) error
+		authManager          AuthManager
+		existingResourcePool bool // Simulates a cluster installed with pre-existing resource pool
 	}{
 		{
 			name:             "valid Permissions",
@@ -220,10 +248,25 @@ func TestPermissionValidate(t *testing.T) {
 			validationMethod: clusterLevelPrivilegeCheck,
 		},
 		{
-			name:             "missing cluster Permissions",
-			authManager:      missingClusterPermissionsClient,
-			expectErr:        "missing privileges for compute cluster DC1_C0: VirtualMachine.Config.AddNewDisk",
-			validationMethod: vmLevelPrivilegeCheck,
+			name:                 "missing cluster Permissions",
+			authManager:          missingClusterPermissionsClient,
+			expectErr:            "missing privileges for compute cluster DC1_C0: VirtualMachine.Config.AddNewDisk",
+			validationMethod:     vmLevelPrivilegeCheck,
+			existingResourcePool: false,
+		},
+		{
+			name:                 "missing cluster read Permissions",
+			authManager:          missingClusterPermissionsClient,
+			expectErr:            "",
+			validationMethod:     vmLevelPrivilegeCheck,
+			existingResourcePool: true,
+		},
+		{
+			name:                 "missing resource pool Permissions",
+			authManager:          missingResourcePoolPermissionClient,
+			expectErr:            "missing privileges for resource pool /F0/DC1/host/F0/DC1_C0/Resources: VirtualMachine.Config.AddNewDisk",
+			validationMethod:     vmLevelPrivilegeCheck,
+			existingResourcePool: true,
 		},
 		{
 			name:             "missing datacenter Permissions",
@@ -245,9 +288,17 @@ func TestPermissionValidate(t *testing.T) {
 		},
 	}
 
+	resourcePoolPath := simctx.VMConfig.Workspace.ResourcePoolPath
 	for _, test := range tests {
 		simctx.AuthManager = test.authManager
 		t.Run(test.name, func(t *testing.T) {
+			// Set and unset the resource pool depending on the test
+			if !test.existingResourcePool {
+				simctx.VMConfig.Workspace.ResourcePoolPath = ""
+			} else {
+				simctx.VMConfig.Workspace.ResourcePoolPath = resourcePoolPath
+			}
+
 			err := test.validationMethod(simctx)
 			if test.expectErr == "" {
 				assert.NoError(t, err)
