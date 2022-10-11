@@ -281,10 +281,10 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 	}
 	klog.V(4).Infof("All checks complete")
 
-	results, checksFailed := resultCollector.Collect()
+	results, checkError := resultCollector.Collect()
 	c.reportResults(results)
 	var nextDelay time.Duration
-	if checksFailed {
+	if checkError != nil {
 		// Use exponential backoff
 		nextDelay = nextErrorDelay
 	} else {
@@ -294,14 +294,14 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 		// (i.e. retry as slow as allowed).
 		nextDelay = defaultBackoff.Cap
 	}
-	return nextDelay, nil
+	return nextDelay, checkError
 }
 
 // reportResults sends events for all checks.
 func (c *vSphereProblemDetectorController) reportResults(results []checkResult) {
 	for _, res := range results {
 		if res.Error != nil {
-			c.eventRecorder.Warningf("FailedVSphere"+res.Name+"Failed", res.Error.Error())
+			c.eventRecorder.Warningf("FailedVSphere"+res.Name, res.Error.Error())
 		} else {
 			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, "Check succeeded")
 		}
