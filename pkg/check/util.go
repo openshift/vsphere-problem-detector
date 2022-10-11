@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
@@ -68,4 +69,37 @@ func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.C
 		return &computeClusterMo, nil
 	}
 	return nil, errors.New("compute cluster resource not associated with managed reference")
+}
+
+// getResourcePool returns the parent resource pool for a given Virtual Machine. If the parent is a VirtualApp,
+// then the ResourcePool owner of that VirtualApp is returned instead. Additionally, the Inventory Path of the
+// Resource Pool is returned since the unpathed name alone is often not unique.
+func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.ResourcePool, string, error) {
+	var vmMo mo.VirtualMachine
+	var resourcePoolMo mo.ResourcePool
+	pc := property.DefaultCollector(ctx.VMClient)
+	properties := []string{"resourcePool"}
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	err := pc.RetrieveOne(tctx, ref, properties, &vmMo)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get virtual machine object from managed reference: %v", err)
+	}
+
+	err = pc.RetrieveOne(tctx, vmMo.ResourcePool.Reference(), []string{}, &resourcePoolMo)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get resource pool object from managed reference: %v", err)
+	}
+
+	if resourcePoolMo.Reference().Type == "VirtualApp" {
+		err = pc.RetrieveOne(tctx, resourcePoolMo.Parent.Reference(), []string{}, &resourcePoolMo)
+	}
+
+	resourcePoolPath, err := find.InventoryPath(tctx, ctx.VMClient, resourcePoolMo.Reference())
+	if err != nil {
+		return nil, "", err
+	}
+
+	return &resourcePoolMo, resourcePoolPath, nil
 }

@@ -38,12 +38,13 @@ type permissionGroupDefinition struct {
 }
 
 var (
-	permissionVcenter    permissionGroup = "vcenter"
-	permissionCluster    permissionGroup = "cluster"
-	permissionPortgroup  permissionGroup = "portgroup"
-	permissionDatacenter permissionGroup = "datacenter"
-	permissionDatastore  permissionGroup = "datastore"
-	permissionFolder     permissionGroup = "folder"
+	permissionVcenter      permissionGroup = "vcenter"
+	permissionCluster      permissionGroup = "cluster"
+	permissionPortgroup    permissionGroup = "portgroup"
+	permissionDatacenter   permissionGroup = "datacenter"
+	permissionDatastore    permissionGroup = "datastore"
+	permissionFolder       permissionGroup = "folder"
+	permissionResourcePool permissionGroup = "resourcepool"
 )
 var permissions = map[permissionGroup][]string{
 	// Base set of permissions required for cluster creation
@@ -100,42 +101,19 @@ var permissions = map[permissionGroup][]string{
 		"VirtualMachine.Provisioning.DeployTemplate",
 	},
 	permissionDatacenter: {
-		"Resource.AssignVMToPool",
-		"VApp.Import",
-		"VirtualMachine.Config.AddExistingDisk",
-		"VirtualMachine.Config.AddNewDisk",
-		"VirtualMachine.Config.AddRemoveDevice",
-		"VirtualMachine.Config.AdvancedConfig",
-		"VirtualMachine.Config.Annotation",
-		"VirtualMachine.Config.CPUCount",
-		"VirtualMachine.Config.DiskExtend",
-		"VirtualMachine.Config.DiskLease",
-		"VirtualMachine.Config.EditDevice",
-		"VirtualMachine.Config.Memory",
-		"VirtualMachine.Config.RemoveDisk",
-		"VirtualMachine.Config.Rename",
-		"VirtualMachine.Config.ResetGuestInfo",
-		"VirtualMachine.Config.Resource",
-		"VirtualMachine.Config.Settings",
-		"VirtualMachine.Config.UpgradeVirtualHardware",
-		"VirtualMachine.Interact.GuestControl",
-		"VirtualMachine.Interact.PowerOff",
-		"VirtualMachine.Interact.PowerOn",
-		"VirtualMachine.Interact.Reset",
-		"VirtualMachine.Inventory.Create",
-		"VirtualMachine.Inventory.CreateFromExisting",
-		"VirtualMachine.Inventory.Delete",
-		"VirtualMachine.Provisioning.Clone",
-		"VirtualMachine.Provisioning.DeployTemplate",
-		"VirtualMachine.Provisioning.MarkAsTemplate",
-		"Folder.Create",
-		"Folder.Delete",
+		"System.Read",
 	},
 	permissionDatastore: {
 		"Datastore.AllocateSpace",
 		"Datastore.Browse",
 		"Datastore.FileManagement",
 		"InventoryService.Tagging.ObjectAttachable",
+	},
+	permissionResourcePool: {
+		"Resource.AssignVMToPool",
+		"VApp.AssignResourcePool",
+		"VApp.Import",
+		"VirtualMachine.Config.AddNewDisk",
 	},
 }
 

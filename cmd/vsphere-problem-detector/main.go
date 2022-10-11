@@ -8,6 +8,7 @@ import (
 	"k8s.io/component-base/cli"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+
 	"github.com/openshift/vsphere-problem-detector/pkg/operator"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 )
@@ -20,7 +21,7 @@ func main() {
 
 func NewOperatorCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "vsphere-monitoring-operator",
+		Use:   "vsphere-problem-detector",
 		Short: "OpenShift vSphere Problem Detector",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.Help()

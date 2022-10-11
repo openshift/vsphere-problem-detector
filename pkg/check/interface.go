@@ -42,6 +42,7 @@ var (
 		},
 		&CheckNodeDiskPerf{},
 		&CheckComputeClusterPermissions{},
+		&CheckResourcePoolPermissions{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
