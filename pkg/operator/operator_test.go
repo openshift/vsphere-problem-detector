@@ -6,7 +6,16 @@ import (
 	"testing"
 	"time"
 
+	configv1 "github.com/openshift/api/config/v1"
+	opv1 "github.com/openshift/api/operator/v1"
+	configinformers "github.com/openshift/client-go/config/listers/config/v1"
+	fakeop "github.com/openshift/client-go/operator/clientset/versioned/fake"
+	opinformers "github.com/openshift/client-go/operator/informers/externalversions"
+	"github.com/openshift/library-go/pkg/controller/factory"
+	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 func TestCheckForDeprecation(t *testing.T) {
@@ -126,11 +135,21 @@ func TestCheckForDeprecation(t *testing.T) {
 }
 
 type testvSphereChecker struct {
-	err error
+	vCenterVersion string
+	apiVersion     string
+	err            error // error from runChecks()
+	checkErr       error // error in a mock check result
 }
 
 func (d *testvSphereChecker) runChecks(ctx context.Context, info *util.ClusterInfo) (*ResultCollector, error) {
+	if d.vCenterVersion != "" && info != nil {
+		info.SetVCenterVersion(d.vCenterVersion, d.apiVersion)
+	}
 	resultCollector := NewResultsCollector()
+	resultCollector.AddResult(checkResult{
+		Name:  "FakeCheck",
+		Error: d.checkErr,
+	})
 	return resultCollector, d.err
 }
 
@@ -226,10 +245,11 @@ func TestSyncChecks(t *testing.T) {
 				checkerFunc: func(c *vSphereProblemDetectorController) vSphereCheckerInterface {
 					return &testvSphereChecker{err: tc.checkError}
 				},
-				backoff: defaultBackoff,
+				backoff:       defaultBackoff,
+				eventRecorder: events.NewInMemoryRecorder("vsphere-problem-detector"),
 			}
 
-			// if we should not perform checks, add randomly 10s to next check duration
+			// if we sho	uld not perform checks, add randomly 10s to next check duration
 			if !tc.performChecks {
 				vsphereProblemOperator.nextCheck = time.Now().Add(10 * time.Second)
 			}
@@ -266,4 +286,129 @@ func compareTimeDiffWithinTimeFactor(t1, t2 time.Duration) bool {
 		maxTime := time.Duration(float64(t2) + float64(allowedTimeFactor))
 		return (t1 < maxTime)
 	}
+}
+
+func TestSync(t *testing.T) {
+	tests := []struct {
+		name           string
+		mockCheckError error // error returned by a fake check
+		runCheckError  error // error returned by runChecks()
+
+		expectedAvailableConditionStatus  opv1.ConditionStatus
+		expectedAvailableConditionMessage string
+
+		clusterInfo   *util.ClusterInfo
+		isDeprecated  bool
+		hasError      bool
+		performChecks bool
+	}{
+		{
+			name:                              "sync with no errors",
+			mockCheckError:                    nil,
+			expectedAvailableConditionStatus:  opv1.ConditionTrue,
+			expectedAvailableConditionMessage: "",
+		},
+		{
+			name:                             "error in a single check",
+			mockCheckError:                   fmt.Errorf("Mock check failure"),
+			expectedAvailableConditionStatus: opv1.ConditionTrue,
+			// The error gets propagated to the Available condition message
+			expectedAvailableConditionMessage: "Mock check failure",
+		},
+		{
+			name:                             "error in runCheck",
+			runCheckError:                    fmt.Errorf("Mock check failure"),
+			expectedAvailableConditionStatus: opv1.ConditionTrue,
+			// The error gets propagated to the Available condition message
+			expectedAvailableConditionMessage: "Mock check failure",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			storageInstance := &opv1.Storage{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cluster",
+				},
+				Spec: opv1.StorageSpec{
+					OperatorSpec: opv1.OperatorSpec{
+						ManagementState: "Managed",
+					},
+				},
+				Status: opv1.StorageStatus{
+					OperatorStatus: opv1.OperatorStatus{},
+				},
+			}
+
+			opClient := fakeop.NewSimpleClientset(storageInstance)
+			opInformerFactory := opinformers.NewSharedInformerFactory(opClient, 0)
+			opInformerFactory.Operator().V1().Storages().Informer().GetIndexer().Add(storageInstance)
+
+			operatorClient := &OperatorClient{
+				Informers: opInformerFactory,
+				Client:    opClient.OperatorV1(),
+			}
+
+			vsphereProblemOperator := &vSphereProblemDetectorController{
+				checkerFunc: func(c *vSphereProblemDetectorController) vSphereCheckerInterface {
+					return &testvSphereChecker{
+						vCenterVersion: "7.0.3",
+						apiVersion:     "7.0.3",
+						err:            tc.runCheckError,
+						checkErr:       tc.mockCheckError,
+					}
+				},
+				operatorClient: operatorClient,
+				infraLister:    &testInfraLister{},
+				backoff:        defaultBackoff,
+				eventRecorder:  events.NewInMemoryRecorder("vsphere-problem-detector"),
+			}
+
+			err := vsphereProblemOperator.sync(context.TODO(), factory.NewSyncContext(controllerName, events.NewInMemoryRecorder("test-csi-driver")))
+			if err != nil {
+				// sync() should always succeed, regardless if the checks succeeded or not
+				t.Errorf("sync returned unexpected error: %s", err)
+			}
+
+			storage, err := opClient.OperatorV1().Storages().Get(context.TODO(), "cluster", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Error getting operator status: %s", err)
+			}
+			if len(storage.Status.Conditions) != 1 {
+				t.Fatalf("Expected 1 condition in status, got none: %+v", storage.Status)
+			}
+			cnd := storage.Status.Conditions[0]
+			if cnd.Status != tc.expectedAvailableConditionStatus {
+				t.Errorf("Expected Available condition %q, got %q", tc.expectedAvailableConditionStatus, cnd.Status)
+			}
+			if cnd.Message != tc.expectedAvailableConditionMessage {
+				t.Errorf("Expected Available condition message %q, got %q", tc.expectedAvailableConditionMessage, cnd.Message)
+			}
+		})
+	}
+}
+
+// Fake InfrastructureLister that provides Infrastructure with vSphere.
+type testInfraLister struct{}
+
+var _ configinformers.InfrastructureLister = &testInfraLister{}
+
+var testInfra = configv1.Infrastructure{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: "cluster",
+	},
+	Status: configv1.InfrastructureStatus{
+		PlatformStatus: &configv1.PlatformStatus{
+			Type: configv1.VSpherePlatformType,
+		},
+	},
+}
+
+func (t testInfraLister) List(selector labels.Selector) (ret []*configv1.Infrastructure, err error) {
+	return []*configv1.Infrastructure{
+		testInfra.DeepCopy(),
+	}, nil
+}
+
+func (t testInfraLister) Get(name string) (*configv1.Infrastructure, error) {
+	return testInfra.DeepCopy(), nil
 }
