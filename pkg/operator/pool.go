@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
 
@@ -109,8 +110,7 @@ func (r *ResultCollector) AddResult(res checkResult) {
 // It merges results of the same check into a single error
 // It returns status of each check and overall
 // succeeded / failed status of all checks.
-func (r *ResultCollector) Collect() ([]checkResult, bool) {
-	failed := false
+func (r *ResultCollector) Collect() ([]checkResult, error) {
 	r.resultsMutex.Lock()
 	defer r.resultsMutex.Unlock()
 
@@ -133,8 +133,8 @@ func (r *ResultCollector) Collect() ([]checkResult, bool) {
 			res.Error = nil
 		} else {
 			res.Error = check.JoinErrors(errs)
-			failed = true
 		}
+		checkResults = append(checkResults, res)
 	}
-	return checkResults, failed
+	return checkResults, errors.NewAggregate(allErrs)
 }
