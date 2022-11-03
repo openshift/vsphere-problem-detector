@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/vmware/govmomi/property"
@@ -125,30 +124,6 @@ func CheckStorageClasses(ctx *CheckContext) error {
 	}
 
 	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
-	return JoinErrors(errs)
-}
-
-// CheckPVs tests that datastore name in all PVs in the cluster is short enough.
-func CheckPVs(ctx *CheckContext) error {
-	var errs []error
-
-	pvs, err := ctx.KubeClient.ListPVs(ctx.Context)
-	if err != nil {
-		return err
-	}
-	for i := range pvs {
-		pv := pvs[i]
-		if pv.Spec.VsphereVolume == nil {
-			continue
-		}
-		klog.V(4).Infof("Checking PV %s: %s", pv.Name, pv.Spec.VsphereVolume.VolumePath)
-		err := checkVolumeName(pv.Spec.VsphereVolume.VolumePath)
-		if err != nil {
-			klog.V(2).Infof("CheckPVs: %s: %s", pv.Name, err)
-			errs = append(errs, fmt.Errorf("PersistentVolume %s: %s", pv.Name, err))
-		}
-	}
-	klog.V(2).Infof("CheckPVs: checked %d PVs, %d problems found", len(pvs), len(errs))
 	return JoinErrors(errs)
 }
 
@@ -307,14 +282,7 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 }
 
 func checkDataStore(ctx *CheckContext, dsName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
-	clusterID := infrastructure.Status.InfrastructureName
-	volumeName := generateVolumeName(clusterID, "pvc-00000000-0000-0000-0000-000000000000", maxVolumeName)
-	fullVolumeName := fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/%s.vmdk", dsName, volumeName)
-	klog.V(4).Infof("Checking data store %q with potential volume Name %s", dsName, fullVolumeName)
 	var errs []error
-	if err := checkVolumeName(fullVolumeName); err != nil {
-		errs = append(errs, fmt.Errorf("datastore %s: %s", dsName, err))
-	}
 	if err := checkForDatastoreCluster(ctx, dsName, dsTypes); err != nil {
 		errs = append(errs, err)
 	}
@@ -394,43 +362,4 @@ func checkForDatastoreCluster(ctx *CheckContext, dataStoreName string, dsTypes d
 	}
 	klog.V(4).Infof("Checked datastore %s for SRDS - no problems found", dataStoreName)
 	return nil
-}
-
-func checkVolumeName(name string) error {
-	path := fmt.Sprintf("/var/lib/kubelet/plugins/kubernetes.io/vsphere-volume/mounts/%s", name)
-	escapedPath, err := systemdEscape(path)
-	if err != nil {
-		return fmt.Errorf("error running systemd-escape: %s", err)
-	}
-	if len(escapedPath) >= 255 {
-		return fmt.Errorf("datastore name is too long: escaped volume path %q must be under 255 characters, got %d", escapedPath, len(escapedPath))
-	}
-	return nil
-}
-
-func systemdEscape(path string) (string, error) {
-	cmd := exec.Command("systemd-escape", path)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("systemd-escape: %s: %s", err, string(out))
-	}
-	escapedPath := strings.TrimSpace(string(out))
-	return escapedPath, nil
-}
-
-// Copied from https://github.com/kubernetes/kubernetes/blob/93d288e2a47fa6d497b50d37c8b3a04e91da4228/pkg/volume/util/util.go#L230
-// GenerateVolumeName returns a PV name with clusterName prefix. The function
-// should be used to generate a name of GCE PD or Cinder volume. It basically
-// adds "<clusterName>-dynamic-" before the PV name, making sure the resulting
-// string fits given length and cuts "dynamic" if not.
-func generateVolumeName(clusterName, pvName string, maxLength int) string {
-	prefix := clusterName + "-dynamic"
-	pvLen := len(pvName)
-
-	// cut the "<clusterName>-dynamic" to fit full pvName into maxLength
-	// +1 for the '-' dash
-	if pvLen+1+len(prefix) > maxLength {
-		prefix = prefix[:maxLength-pvLen-1]
-	}
-	return prefix + "-" + pvName
 }

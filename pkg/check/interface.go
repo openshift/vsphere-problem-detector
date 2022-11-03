@@ -20,13 +20,10 @@ var (
 
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
-		"CheckTaskPermissions":   CheckTaskPermissions,
-		"ClusterInfo":            CollectClusterInfo,
-		"CheckFolderPermissions": CheckFolderPermissions,
-		"CheckDefaultDatastore":  CheckDefaultDatastore,
-		// PV checks are disabled because existing PVs can't be fixed easily and it could be problematic
-		// to keep alerting on them
-		// "CheckPVs":               CheckPVs,
+		"CheckTaskPermissions":    CheckTaskPermissions,
+		"ClusterInfo":             CollectClusterInfo,
+		"CheckFolderPermissions":  CheckFolderPermissions,
+		"CheckDefaultDatastore":   CheckDefaultDatastore,
 		"CheckStorageClasses":     CheckStorageClasses,
 		"CountRWXVolumes":         CountRWXVolumes,
 		"CheckAccountPermissions": CheckAccountPermissions,

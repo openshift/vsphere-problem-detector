@@ -7,7 +7,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -156,72 +155,6 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 				if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(expectedMetric), "vsphere_datastore_total"); err != nil {
 					t.Errorf("Unexpected metric: %s", err)
 				}
-			}
-		})
-	}
-}
-
-func TestCheckPVs(t *testing.T) {
-	var (
-		pvWithDatastoreNames = []struct {
-			name        string
-			datastore   string
-			expectError bool
-		}{
-			{
-				name:        "short datastore",
-				datastore:   "LocalDS_1",
-				expectError: false,
-			},
-			{
-				name:        "long datastore",
-				datastore:   "01234567890123456789012345678901234567890123456789", // 269 characters in the escaped path
-				expectError: true,
-			},
-			{
-				name:        "short datastore with too many dashes",
-				datastore:   "0-1-2-3-4-5-6-7-8-9", // 265 characters in the escaped path
-				expectError: true,
-			},
-		}
-	)
-
-	for _, test := range pvWithDatastoreNames {
-		t.Run(test.name, func(t *testing.T) {
-			// Stage
-			kubeClient := &fakeKubeClient{
-				infrastructure: infrastructure(),
-				nodes:          defaultNodes(),
-				pvs: []*v1.PersistentVolume{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: test.name,
-						},
-						Spec: v1.PersistentVolumeSpec{
-							PersistentVolumeSource: v1.PersistentVolumeSource{
-								VsphereVolume: &v1.VsphereVirtualDiskVolumeSource{
-									VolumePath: fmt.Sprintf("[%s] 00000000-0000-0000-0000-000000000000/my-cluster-id-dynamic-pvc-00000000-0000-0000-0000-000000000000.vmdk", test.datastore),
-								},
-							},
-						},
-					},
-				},
-			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
-			if err != nil {
-				t.Fatalf("setupSimulator failed: %s", err)
-			}
-			defer cleanup()
-
-			// Act
-			err = CheckPVs(ctx)
-
-			// Assert
-			if err != nil && !test.expectError {
-				t.Errorf("Unexpected error: %s", err)
-			}
-			if err == nil && test.expectError {
-				t.Errorf("Expected error, got none")
 			}
 		})
 	}
