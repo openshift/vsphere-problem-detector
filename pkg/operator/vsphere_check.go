@@ -13,6 +13,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
@@ -47,12 +48,22 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 			klog.Errorf("Failed to logout: %v", err)
 		}
 	}()
+
+	// Get the fully-qualified vsphere username
+	sessionMgr := session.NewManager(vmClient.Client)
+	user, err := sessionMgr.UserSession(ctx)
+	if err != nil {
+		return resultCollector, err
+	}
+
 	authManager := object.NewAuthorizationManager(vmClient.Client)
+
 	checkContext := &check.CheckContext{
 		Context:     ctx,
 		AuthManager: authManager,
 		VMConfig:    vmConfig,
 		VMClient:    vmClient.Client,
+		Username:    user.UserName,
 		KubeClient:  v.controller,
 		ClusterInfo: clusterInfo,
 	}

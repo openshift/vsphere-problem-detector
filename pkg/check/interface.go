@@ -63,6 +63,7 @@ type CheckContext struct {
 	Context     context.Context
 	VMConfig    *vsphere.VSphereConfig
 	VMClient    *vim25.Client
+	Username    string
 	AuthManager AuthManager
 	KubeClient  KubeClient
 	ClusterInfo *util.ClusterInfo
