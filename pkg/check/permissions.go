@@ -150,14 +150,13 @@ func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
 		return errors.New("vcenter instance not found in the virtual center map")
 	}
-	username := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP].User
 
 	matchingDC, err := getDatacenter(ctx, dataCenterName)
 	if err != nil {
 		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
 		return err
 	}
-	if err := comparePrivileges(ctx.Context, username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
+	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
 		return fmt.Errorf("missing privileges for datacenter %s: %s", dataCenterName, err.Error())
 	}
 	return nil
@@ -167,7 +166,6 @@ func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissio
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
 		return errors.New("vcenter instance not found in the virtual center map")
 	}
-	username := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP].User
 
 	finder := find.NewFinder(ctx.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
@@ -175,7 +173,7 @@ func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissio
 		klog.Errorf("error getting folder %s: %v", folderPath, err)
 		return err
 	}
-	if err := comparePrivileges(ctx.Context, username, folder.Reference(), ctx.AuthManager, permissions[group]); err != nil {
+	if err := comparePrivileges(ctx.Context, ctx.Username, folder.Reference(), ctx.AuthManager, permissions[group]); err != nil {
 		return fmt.Errorf("missing privileges for %s: %s", group, err.Error())
 	}
 	return nil
@@ -185,8 +183,6 @@ func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string) error {
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
 		return errors.New("vcenter instance not found in the virtual center map")
 	}
-
-	username := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP].User
 
 	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
@@ -198,7 +194,7 @@ func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string) error {
 		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
 		return err
 	}
-	if err := comparePrivileges(ctx.Context, username, ds.Reference(), ctx.AuthManager, permissions[permissionDatastore]); err != nil {
+	if err := comparePrivileges(ctx.Context, ctx.Username, ds.Reference(), ctx.AuthManager, permissions[permissionDatastore]); err != nil {
 		return fmt.Errorf("missing privileges for datastore %s: %s", dataStoreName, err.Error())
 	}
 	return nil
