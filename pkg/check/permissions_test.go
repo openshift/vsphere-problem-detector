@@ -8,6 +8,7 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/check/mock"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 
@@ -17,7 +18,14 @@ import (
 
 func getAuthManagerWithValidPrivileges(ctx *CheckContext, mockCtrl *gomock.Controller) (AuthManager, error) {
 	finder := find.NewFinder(ctx.VMClient)
-	validPermissionsAuthManagerClient, err := buildAuthManagerClient(ctx.Context, mockCtrl, finder, defaultUsername, nil, []string{})
+
+	sessionMgr := session.NewManager(ctx.VMClient)
+	userSession, err := sessionMgr.UserSession(ctx.Context)
+	if err != nil {
+		return nil, err
+	}
+
+	validPermissionsAuthManagerClient, err := buildAuthManagerClient(ctx.Context, mockCtrl, finder, userSession.UserName, nil, []string{})
 	if err != nil {
 		return nil, err
 	}
@@ -186,44 +194,51 @@ func TestPermissionValidate(t *testing.T) {
 		return
 	}
 
+	sessionMgr := session.NewManager(simctx.VMClient)
+	userSession, err := sessionMgr.UserSession(simctx.Context)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	var folders = []string{"/DC0/vm"}
-	validPermissionsAuthManagerClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, nil, folders)
+	validPermissionsAuthManagerClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, nil, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingVCenterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionVcenter, folders)
+	missingVCenterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionVcenter, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingClusterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionCluster, folders)
+	missingClusterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionCluster, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingResourcePoolPermissionClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionResourcePool, folders)
+	missingResourcePoolPermissionClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionResourcePool, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingDatastorePermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionDatastore, folders)
+	missingDatastorePermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionDatastore, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingDatacenterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionDatacenter, folders)
+	missingDatacenterPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionDatacenter, folders)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	missingFolderPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, defaultUsername, &permissionFolder, folders)
+	missingFolderPermissionsClient, err := buildAuthManagerClient(ctx, mockCtrl, finder, userSession.UserName, &permissionFolder, folders)
 	if err != nil {
 		t.Error(err)
 		return
