@@ -25,7 +25,7 @@ var (
 		"CheckFolderPermissions":  CheckFolderPermissions,
 		"CheckDefaultDatastore":   CheckDefaultDatastore,
 		"CheckStorageClasses":     CheckStorageClasses,
-		"CountRWXVolumes":         CountRWXVolumes,
+		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
