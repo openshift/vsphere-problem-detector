@@ -86,7 +86,7 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 	s := model.Service.NewServer()
 	client, err := connectToSimulator(s)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to the similator: %s", err)
+		return nil, nil, fmt.Errorf("failed to connect to the simulator: %s", err)
 	}
 	clusterInfo := util.NewClusterInfo()
 
