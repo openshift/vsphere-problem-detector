@@ -1091,7 +1091,7 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider v0.25.1
+# k8s.io/cloud-provider v0.26.1
 ## explicit; go 1.19
 k8s.io/cloud-provider
 k8s.io/cloud-provider/node/helpers
@@ -1151,7 +1151,7 @@ k8s.io/kube-openapi/pkg/spec3
 k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/legacy-cloud-providers v0.25.1
+# k8s.io/legacy-cloud-providers v0.26.1
 ## explicit; go 1.19
 k8s.io/legacy-cloud-providers/vsphere
 k8s.io/legacy-cloud-providers/vsphere/vclib
