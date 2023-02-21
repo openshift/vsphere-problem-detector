@@ -3,6 +3,8 @@ package operator
 import (
 	"context"
 	"fmt"
+	"github.com/vmware/govmomi/vapi/rest"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"net/url"
 	"strings"
 
@@ -38,7 +40,7 @@ func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterf
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
 	resultCollector := NewResultsCollector()
-	vmConfig, vmClient, err := v.connect(ctx)
+	vmConfig, vmClient, restClient, err := v.connect(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
@@ -63,6 +65,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		AuthManager: authManager,
 		VMConfig:    vmConfig,
 		VMClient:    vmClient.Client,
+		TagManager:  vapitags.NewManager(restClient),
 		Username:    user.UserName,
 		KubeClient:  v.controller,
 		ClusterInfo: clusterInfo,
@@ -83,39 +86,39 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	return resultCollector, nil
 }
 
-func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, error) {
+func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, *rest.Client, error) {
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	cfg, err := parseConfig(cfgString)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse config: %s", err)
+		return nil, nil, nil, fmt.Errorf("failed to parse config: %s", err)
 	}
 
 	username, password, err := c.getCredentials(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	vmClient, err := newClient(ctx, cfg, username, password)
+	vmClient, restClient, err := newClient(ctx, cfg, username, password)
 	if err != nil {
 		if strings.Index(username, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(1)
-			return nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(0)
 		}
 
 		if strings.Index(password, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(1)
-			return nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(0)
 		}
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(1)
-		return nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+		return nil, nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
 	} else {
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
@@ -124,7 +127,7 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 	}
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient, nil
+	return cfg, vmClient, restClient, nil
 }
 
 func (c *vSphereChecker) getCredentials(cfg *vsphere.VSphereConfig) (string, string, error) {
@@ -314,11 +317,11 @@ func parseConfig(data string) (*vsphere.VSphereConfig, error) {
 	return &cfg, nil
 }
 
-func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, password string) (*govmomi.Client, error) {
+func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, password string) (*govmomi.Client, *rest.Client, error) {
 	serverAddress := cfg.Workspace.VCenterIP
 	serverURL, err := soap.ParseURL(serverAddress)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %s", err)
+		return nil, nil, fmt.Errorf("failed to parse config file: %s", err)
 	}
 
 	insecure := cfg.Global.InsecureFlag
@@ -333,7 +336,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	client, err := govmomi.NewClient(tctx, serverURL, insecure)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Set up user agent before login for being able to track vpdo component in vcenter sessions list
@@ -341,8 +344,14 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	client.UserAgent = fmt.Sprintf("vsphere-problem-detector/%s", vpdVersion)
 
 	if err := client.Login(tctx, url.UserPassword(username, password)); err != nil {
-		return nil, fmt.Errorf("unable to login to vCenter: %w", err)
+		return nil, nil, fmt.Errorf("unable to login to vCenter: %w", err)
 	}
 
-	return client, nil
+	restClient := rest.NewClient(client.Client)
+	if err := restClient.Login(tctx, url.UserPassword(username, password)); err != nil {
+		client.Logout(context.TODO())
+		return nil, nil, fmt.Errorf("unable to login to vCenter REST API: %w", err)
+	}
+
+	return client, restClient, nil
 }
