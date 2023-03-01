@@ -124,9 +124,9 @@ func CheckZoneTags(ctx *CheckContext) error {
 		return err
 	}
 
-	// Perform check if FailureDomains defined.
+	// Perform check if FailureDomains defined.  We need 2 or more to require tags.
 	klog.V(4).Info("Checking failure domains.")
-	if fds := inf.Spec.PlatformSpec.VSphere.FailureDomains; fds != nil && len(fds) > 0 {
+	if fds := inf.Spec.PlatformSpec.VSphere.FailureDomains; fds != nil && len(fds) > 1 {
 		// Validate tags exist for cluster
 		regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx)
 		if err != nil {
