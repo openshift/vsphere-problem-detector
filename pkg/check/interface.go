@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"flag"
-	"github.com/vmware/govmomi/object"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"time"
 
@@ -15,40 +14,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/legacy-cloud-providers/vsphere"
 )
-
-// TagManager defines an interface to an implementation of the AuthorizationManager to facilitate mocking.
-type TagManager interface {
-	AttachTag(ctx context.Context, tagID string, ref mo.Reference) error
-	CreateCategory(ctx context.Context, category *vapitags.Category) (string, error)
-	CreateTag(ctx context.Context, tag *vapitags.Tag) (string, error)
-	DeleteCategory(ctx context.Context, category *vapitags.Category) error
-	DeleteTag(ctx context.Context, tag *vapitags.Tag) error
-	DetachTag(ctx context.Context, tagID string, ref mo.Reference) error
-	ListCategories(ctx context.Context) ([]string, error)
-	ListTags(ctx context.Context) ([]string, error)
-	GetCategories(ctx context.Context) ([]vapitags.Category, error)
-	GetCategory(ctx context.Context, id string) (*vapitags.Category, error)
-	GetTagsForCategory(ctx context.Context, id string) ([]vapitags.Tag, error)
-	GetAttachedTags(ctx context.Context, ref mo.Reference) ([]vapitags.Tag, error)
-	GetAttachedTagsOnObjects(ctx context.Context, objectID []mo.Reference) ([]vapitags.AttachedTags, error)
-	GetAttachedObjectsOnTags(ctx context.Context, tagID []string) ([]vapitags.AttachedObjects, error)
-}
-
-// Finder interface represents the client that is used to connect to VSphere to get specific
-// information from the resources in the VCenter. This interface just describes all the useful
-// functions used by the vsphere problem detector from the finder function in vmware govmomi
-// package and is mostly used to create a mock client that can be used for testing.
-type Finder interface {
-	Datacenter(ctx context.Context, path string) (*object.Datacenter, error)
-	DatacenterList(ctx context.Context, path string) ([]*object.Datacenter, error)
-	DatastoreList(ctx context.Context, path string) ([]*object.Datastore, error)
-	ClusterComputeResource(ctx context.Context, path string) (*object.ClusterComputeResource, error)
-	ClusterComputeResourceList(ctx context.Context, path string) ([]*object.ClusterComputeResource, error)
-	Folder(ctx context.Context, path string) (*object.Folder, error)
-	NetworkList(ctx context.Context, path string) ([]object.NetworkReference, error)
-	Network(ctx context.Context, path string) (object.NetworkReference, error)
-	ResourcePool(ctx context.Context, path string) (*object.ResourcePool, error)
-}
 
 var (
 	// Make the vSphere call timeout configurable.
@@ -100,7 +65,7 @@ type CheckContext struct {
 	Context     context.Context
 	VMConfig    *vsphere.VSphereConfig
 	VMClient    *vim25.Client
-	TagManager  TagManager
+	TagManager  *vapitags.Manager
 	Username    string
 	AuthManager AuthManager
 	KubeClient  KubeClient

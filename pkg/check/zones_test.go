@@ -108,7 +108,7 @@ func teardownTagAttachmentTest(checkContext CheckContext) error {
 	return nil
 }
 
-func setupTagAttachmentTest(checkContext CheckContext, finder Finder, attachmentMask int64) error {
+func setupTagAttachmentTest(checkContext CheckContext, finder *find.Finder, attachmentMask int64) error {
 	tagMgr := checkContext.TagManager
 	ctx := checkContext.Context
 	if attachmentMask&tagTestCreateRegionCategory != 0 {
