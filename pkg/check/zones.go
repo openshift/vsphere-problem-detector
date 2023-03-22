@@ -64,6 +64,11 @@ func validateTagAttachment(ctx *CheckContext, vctx validationContext) error {
 	klog.V(2).Infof("Validating tags for %s.", vctx.reference)
 	referencesToCheck := []mo.Reference{vctx.reference}
 	ancestors, err := getAncestors(ctx, vctx.reference)
+	if err != nil {
+		klog.Error("Unable to get ancestors.")
+		return err
+	}
+
 	for _, ancestor := range ancestors {
 		referencesToCheck = append(referencesToCheck, ancestor.Reference())
 	}
@@ -126,7 +131,7 @@ func CheckZoneTags(ctx *CheckContext) error {
 
 	// Perform check if FailureDomains defined.  We need 2 or more to require tags.
 	klog.V(4).Info("Checking failure domains.")
-	if fds := inf.Spec.PlatformSpec.VSphere.FailureDomains; fds != nil && len(fds) > 1 {
+	if fds := inf.Spec.PlatformSpec.VSphere.FailureDomains; len(fds) > 1 {
 		// Validate tags exist for cluster
 		regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx)
 		if err != nil {
@@ -142,10 +147,10 @@ func CheckZoneTags(ctx *CheckContext) error {
 			topologyField := vsphereField.Child("failureDomains").Child("topology")
 
 			computeCluster := fd.Topology.ComputeCluster
-			clusterPathRegexp := regexp.MustCompile("^\\/(.*?)\\/host\\/(.*?)$")
+			clusterPathRegexp := regexp.MustCompile(`^/(.*?)/host/(.*?)$`)
 			clusterPathParts := clusterPathRegexp.FindStringSubmatch(computeCluster)
 			if len(clusterPathParts) < 3 {
-				klog.V(4).Info("CLUSTER PARTS LESS THAN 3")
+				klog.V(4).Info("Cluster parts are less than 3")
 				errs = append(errs, field.Invalid(topologyField.Child("computeCluster"), computeCluster, "full path of cluster is required"))
 			}
 			computeClusterName := clusterPathParts[2]
