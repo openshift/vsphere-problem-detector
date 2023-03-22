@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/klog/v2"
-	"time"
-
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim "github.com/vmware/govmomi/vim25/types"
+	"k8s.io/klog/v2"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
@@ -110,7 +108,7 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 // getClusterComputeResource returns the ComputeResource that matches the provided name.
 func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacenter *object.Datacenter) (*object.ClusterComputeResource, error) {
 	klog.V(4).Infof("Looking for CC: %s", computeCluster)
-	tctx, cancel := context.WithTimeout(ctx.Context, 60*time.Second)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 
 	finder := find.NewFinder(ctx.VMClient)
@@ -138,7 +136,7 @@ func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
 
 // getAncestors returns a list of ancestor objects related to the passed in ManagedObjectReference.
 func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo.ManagedEntity, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, 60*time.Second)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 
 	ancestors, err := mo.Ancestors(tctx,
@@ -152,7 +150,7 @@ func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo
 }
 
 func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Reference) ([]vapitags.AttachedTags, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, 60*time.Second)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 
 	tagManager := ctx.TagManager
