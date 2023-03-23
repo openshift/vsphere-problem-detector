@@ -7,6 +7,7 @@ import (
 
 const (
 	versionLabel    = "version"
+	buildLabel      = "build"
 	apiVersionLabel = "api_version"
 	vCenterUUID     = "uuid"
 )
@@ -18,7 +19,7 @@ var (
 			Help:           "Information about vSphere vCenter.",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{versionLabel, apiVersionLabel, vCenterUUID},
+		[]string{versionLabel, apiVersionLabel, vCenterUUID, buildLabel},
 	)
 )
 
@@ -37,7 +38,8 @@ func CollectClusterInfo(ctx *CheckContext) error {
 func collectVCenterInfo(ctx *CheckContext) {
 	version := ctx.VMClient.ServiceContent.About.Version
 	apiVersion := ctx.VMClient.ServiceContent.About.ApiVersion
+	build := ctx.VMClient.ServiceContent.About.Build
 	uuid := ctx.VMClient.ServiceContent.About.InstanceUuid
 	ctx.ClusterInfo.SetVCenterVersion(version, apiVersion)
-	vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid).Set(1.0)
+	vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid, build).Set(1.0)
 }
