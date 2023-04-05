@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim "github.com/vmware/govmomi/vim25/types"
+	"k8s.io/klog/v2"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
@@ -102,4 +103,57 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 	}
 
 	return &resourcePoolMo, resourcePoolPath, nil
+}
+
+// getClusterComputeResource returns the ComputeResource that matches the provided name.
+func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacenter *object.Datacenter) (*object.ClusterComputeResource, error) {
+	klog.V(4).Infof("Looking for CC: %s", computeCluster)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	finder := find.NewFinder(ctx.VMClient)
+	finder.SetDatacenter(datacenter)
+	computeClusterMo, err := finder.ClusterComputeResource(tctx, computeCluster)
+	if err != nil {
+		klog.Errorf("Unable to get cluster ComputeResource: %s", err)
+	}
+	return computeClusterMo, err
+}
+
+// getCategories returns all tag categories.
+func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	tagManager := ctx.TagManager
+	tags, err := tagManager.GetCategories(tctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tags, nil
+}
+
+// getAncestors returns a list of ancestor objects related to the passed in ManagedObjectReference.
+func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo.ManagedEntity, error) {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	ancestors, err := mo.Ancestors(tctx,
+		ctx.VMClient.RoundTripper,
+		ctx.VMClient.ServiceContent.PropertyCollector,
+		reference)
+	if err != nil {
+		return nil, err
+	}
+	return ancestors, err
+}
+
+func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Reference) ([]vapitags.AttachedTags, error) {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	tagManager := ctx.TagManager
+	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
+	return attachedTags, err
 }

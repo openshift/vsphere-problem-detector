@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"flag"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"time"
 
 	ocpv1 "github.com/openshift/api/config/v1"
@@ -27,6 +28,7 @@ var (
 		"CheckStorageClasses":     CheckStorageClasses,
 		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
+		"CheckZoneTags":           CheckZoneTags,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
@@ -63,6 +65,7 @@ type CheckContext struct {
 	Context     context.Context
 	VMConfig    *vsphere.VSphereConfig
 	VMClient    *vim25.Client
+	TagManager  *vapitags.Manager
 	Username    string
 	AuthManager AuthManager
 	KubeClient  KubeClient

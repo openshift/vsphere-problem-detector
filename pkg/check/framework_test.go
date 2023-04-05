@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/vmware/govmomi/vapi/rest"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
@@ -11,6 +13,10 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/simulator"
+	// required to initialize the REST endpoint.
+	_ "github.com/vmware/govmomi/vapi/rest"
+	// required to initialize the VAPI endpoint.
+	_ "github.com/vmware/govmomi/vapi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -82,6 +88,7 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 		return nil, nil, err
 	}
 	model.Service.TLS = new(tls.Config)
+	model.Service.RegisterEndpoints = true
 
 	s := model.Service.NewServer()
 	client, err := connectToSimulator(s)
@@ -93,11 +100,15 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 	sessionMgr := session.NewManager(client)
 	userSession, err := sessionMgr.UserSession(context.TODO())
 
+	restClient := rest.NewClient(client)
+	restClient.Login(context.TODO(), s.URL.User)
+
 	ctx = &CheckContext{
 		Context:     context.TODO(),
 		VMConfig:    simulatorConfig(),
 		VMClient:    client,
 		KubeClient:  kubeClient,
+		TagManager:  vapitags.NewManager(restClient),
 		ClusterInfo: clusterInfo,
 	}
 
