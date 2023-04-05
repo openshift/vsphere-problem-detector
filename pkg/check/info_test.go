@@ -24,7 +24,7 @@ func TestInfo(t *testing.T) {
 	expectedMetric := `
         # HELP vsphere_vcenter_info [ALPHA] Information about vSphere vCenter.
         # TYPE vsphere_vcenter_info gauge
-        vsphere_vcenter_info{api_version="6.5", uuid="dbed6e0c-bd88-4ef6-b594-21283e1c677f",version="6.5.0"} 1
+        vsphere_vcenter_info{api_version="6.5", build="5973321", uuid="dbed6e0c-bd88-4ef6-b594-21283e1c677f",version="6.5.0"} 1
 `
 
 	if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(expectedMetric), "vsphere_vcenter_info"); err != nil {
