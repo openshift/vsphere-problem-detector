@@ -56,6 +56,13 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		controllerConfig.EventRecorder,
 	)
 
+	migrationCheckController := NewMigrationCheckController(
+		operatorClient,
+		kubeClient,
+		kubeInformers,
+		configInformers.Config().V1().Infrastructures(),
+		controllerConfig.EventRecorder)
+
 	logLevelController := loglevel.NewClusterOperatorLoggingController(operatorClient, controllerConfig.EventRecorder)
 
 	klog.Info("Starting the Informers.")
@@ -75,6 +82,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	}{
 		logLevelController,
 		operator,
+		migrationCheckController,
 	} {
 		go controller.Run(ctx, 1)
 	}
