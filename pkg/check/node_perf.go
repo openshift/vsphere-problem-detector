@@ -127,19 +127,8 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		hasError = false
 	)
 
-	_, isMaster := node.Labels["node-role.kubernetes.io/master"]
-	_, isWorker := node.Labels["node-role.kubernetes.io/worker"]
-
-	if isMaster && mcd.checkMasters == false {
-		klog.V(2).Infof("skipping metric check of[%s] as it is not intended for master nodes", mcd.metricName)
+	if !checkNodePerf(node, mcd) {
 		return nil
-	} else if isWorker && mcd.checkWorkers == false {
-		if isMaster && mcd.checkMasters {
-			klog.V(2).Infof("master nodes are schedulable, allowing check of [%s] even though check is disabled for workers", mcd.metricName)
-		} else {
-			klog.V(2).Infof("skipping metric check of[%s] as it is not intended for worker nodes", mcd.metricName)
-			return nil
-		}
 	}
 
 	klog.V(4).Infof("performing metric check of: %s", mcd.metricName)
@@ -199,6 +188,7 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 	if hasError {
 		return errors.New(mcd.errorEventMessage)
 	}
+
 	return nil
 }
 
@@ -214,4 +204,28 @@ func (c *CheckNodeDiskPerf) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.V
 
 func (c *CheckNodeDiskPerf) FinishCheck(ctx *CheckContext) {
 	return
+}
+
+// checkNodePerf Check to see if the specified node should have its performance check.
+func checkNodePerf(node *v1.Node, mcd MetricCheckDef) bool {
+	checkPerf := true
+	_, isMaster := node.Labels["node-role.kubernetes.io/master"]
+	_, isWorker := node.Labels["node-role.kubernetes.io/worker"]
+
+	if isMaster && mcd.checkMasters == false {
+		klog.V(2).Infof("skipping metric check of [%s] as it is not intended for master nodes", mcd.metricName)
+		checkPerf = false
+	} else if isWorker && mcd.checkWorkers == false {
+		if isMaster && mcd.checkMasters {
+			klog.V(2).Infof("master nodes are schedulable, allowing check of [%s] even though check is disabled for workers", mcd.metricName)
+		} else {
+			klog.V(2).Infof("skipping metric check of [%s] as it is not intended for worker nodes", mcd.metricName)
+			checkPerf = false
+		}
+	} else if !isMaster && !isWorker {
+		// An unknown role, just exit and skip
+		klog.V(2).Infof("node is not labelled as master or worker, skipping metric check of [%s] for node %s", mcd.metricName, node.Name)
+		checkPerf = false
+	}
+	return checkPerf
 }
