@@ -33,6 +33,7 @@ type vSphereProblemDetectorController struct {
 	nodeLister           corelister.NodeLister
 	pvLister             corelister.PersistentVolumeLister
 	scLister             storagelister.StorageClassLister
+	csiNodeLister        storagelister.CSINodeLister
 	cloudConfigMapLister corelister.ConfigMapLister
 	eventRecorder        events.Recorder
 
@@ -95,6 +96,8 @@ func NewVSphereProblemDetectorController(
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
+	csiNodeInformer := namespacedInformer.InformersFor("").Storage().V1().CSINodes()
+
 	c := &vSphereProblemDetectorController{
 		operatorClient:       operatorClient,
 		kubeClient:           kubeClient,
@@ -104,6 +107,7 @@ func NewVSphereProblemDetectorController(
 		scLister:             scInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
+		csiNodeLister:        csiNodeInformer.Lister(),
 		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
 		clusterChecks:        check.DefaultClusterChecks,
 		nodeChecks:           check.DefaultNodeChecks,
@@ -114,6 +118,7 @@ func NewVSphereProblemDetectorController(
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
 		secretInformer.Informer(),
+		csiNodeInformer.Informer(),
 		nodeInformer.Informer(),
 		pvInformer.Informer(),
 		scInformer.Informer(),
