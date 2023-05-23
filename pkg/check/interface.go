@@ -30,7 +30,6 @@ var (
 		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
 		"CheckZoneTags":           CheckZoneTags,
-		"CheckCBT":                CheckCBT,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
@@ -44,6 +43,7 @@ var (
 		&CheckNodeDiskPerf{},
 		&CheckComputeClusterPermissions{},
 		&CheckResourcePoolPermissions{},
+		&CollectNodeCBT{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
