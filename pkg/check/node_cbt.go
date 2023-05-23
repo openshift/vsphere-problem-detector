@@ -63,7 +63,7 @@ func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.Virt
 		}
 	}
 	if !propFound {
-		klog.V(2).Infof("Property no found for node %v", node.Name)
+		klog.V(2).Infof("Property not found for node %v", node.Name)
 		ctx.ClusterInfo.SetCbtData(false)
 	}
 
@@ -86,7 +86,7 @@ func (c *CollectNodeCBT) FinishCheck(ctx *CheckContext) {
 
 	// Set the counts of enabled vs disabled
 	for cbtEnabled, count := range cbtData {
-		klog.V(2).Infof("CBT (%v): %v", cbtEnabled, count)
+		klog.V(4).Infof("CBT (%v): %v", cbtEnabled, count)
 		cbtMismatchMetric.WithLabelValues(metricKey(cbtEnabled)).Set(float64(count))
 	}
 
