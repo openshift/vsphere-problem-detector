@@ -3,6 +3,7 @@ package check
 import (
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -40,6 +41,7 @@ func collectVCenterInfo(ctx *CheckContext) {
 	apiVersion := ctx.VMClient.ServiceContent.About.ApiVersion
 	build := ctx.VMClient.ServiceContent.About.Build
 	uuid := ctx.VMClient.ServiceContent.About.InstanceUuid
+	klog.V(2).Infof("vCenter version is %s, apiVersion is %s and build is %s", version, apiVersion, build)
 	ctx.ClusterInfo.SetVCenterVersion(version, apiVersion)
 	vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid, build).Set(1.0)
 }
