@@ -2,13 +2,16 @@ package check
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/pkg/errors"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
-	"regexp"
-	"strings"
+
+	v1 "github.com/openshift/api/config/v1"
 )
 
 type validationContext struct {
@@ -131,7 +134,19 @@ func CheckZoneTags(ctx *CheckContext) error {
 
 	// Perform check if FailureDomains defined.  We need 2 or more to require tags.
 	klog.V(4).Info("Checking failure domains.")
-	if fds := inf.Spec.PlatformSpec.VSphere.FailureDomains; len(fds) > 1 {
+
+	var fds []v1.VSpherePlatformFailureDomainSpec
+
+	// In existing UPI clusters the VSphere field in the infra spec
+	// may not be defined.
+	if inf.Spec.PlatformSpec.VSphere != nil {
+		fds = inf.Spec.PlatformSpec.VSphere.FailureDomains
+	} else {
+		klog.V(2).Infof("VSphere Infrastructure spec is empty, no FailureDomains configured. Skipping check.")
+		return nil
+	}
+
+	if len(fds) > 1 {
 		// Validate tags exist for cluster
 		regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx)
 		if err != nil {

@@ -3,12 +3,14 @@ package check
 import (
 	"errors"
 	"fmt"
-	"github.com/vmware/govmomi/find"
 	"testing"
 
-	"github.com/openshift/api/config/v1"
+	"github.com/vmware/govmomi/find"
+
 	"github.com/stretchr/testify/assert"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
+
+	"github.com/openshift/api/config/v1"
 )
 
 const (
@@ -185,6 +187,14 @@ func TestValidate(t *testing.T) {
 		infrastructure: func() *v1.Infrastructure {
 			inf := validInfrastructure()
 			inf.Spec.PlatformSpec.VSphere.FailureDomains = nil
+			return inf
+		}(),
+	}, {
+		name:                "multi-zone validation - VSphere nil - No tags",
+		checkZoneTagsMethod: CheckZoneTags,
+		infrastructure: func() *v1.Infrastructure {
+			inf := validInfrastructure()
+			inf.Spec.PlatformSpec.VSphere = nil
 			return inf
 		}(),
 	}, {
