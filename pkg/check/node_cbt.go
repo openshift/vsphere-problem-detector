@@ -21,8 +21,8 @@ var _ NodeCheck = &CollectNodeCBT{}
 const (
 	cbtMismatchLabel = "cbt"
 	CbtProperty      = "ctkEnabled"
-	cbtEnabled       = "enabled"
-	cbtDisabled      = "disabled"
+	cbtEnabledKey    = "enabled"
+	cbtDisabledKey   = "disabled"
 )
 
 var (
@@ -56,9 +56,9 @@ func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.Virt
 		if config.GetOptionValue().Key == CbtProperty {
 			klog.V(2).Infof("Found ctkEnabled property for node %v with value %v", node.Name, config.GetOptionValue().Value)
 			if strings.EqualFold(fmt.Sprintf("%v", config.GetOptionValue().Value), "TRUE") {
-				ctx.ClusterInfo.SetCbtData(cbtEnabled)
+				ctx.ClusterInfo.SetCbtData(cbtEnabledKey)
 			} else {
-				ctx.ClusterInfo.SetCbtData(cbtDisabled)
+				ctx.ClusterInfo.SetCbtData(cbtDisabledKey)
 			}
 			propFound = true
 			break
@@ -66,7 +66,7 @@ func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.Virt
 	}
 	if !propFound {
 		klog.V(2).Infof("Property not found for node %v", node.Name)
-		ctx.ClusterInfo.SetCbtData(cbtDisabled)
+		ctx.ClusterInfo.SetCbtData(cbtDisabledKey)
 	}
 
 	return nil
@@ -79,10 +79,11 @@ func (c *CollectNodeCBT) FinishCheck(ctx *CheckContext) {
 		c.lastMetricEmission[k] = 0
 	}
 
-	klog.V(2).Infof("Enabled (%v) Disabled (%v)", cbtData[cbtEnabled], cbtData[cbtDisabled])
+	klog.V(2).Infof("Enabled (%v) Disabled (%v)", cbtData[cbtEnabledKey], cbtData[cbtDisabledKey])
 	// Set the counts of enabled vs disabled
 	for cbtEnabled, count := range cbtData {
 		klog.V(4).Infof("CBT (%v): %v", cbtEnabled, count)
+		c.lastMetricEmission[cbtEnabled] = count
 		cbtMismatchMetric.WithLabelValues(cbtEnabled).Set(float64(count))
 	}
 
