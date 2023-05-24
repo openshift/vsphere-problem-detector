@@ -11,7 +11,7 @@ type ClusterInfo struct {
 	// map of host and its esxi version info
 	esxiVersions      map[string]ESXiVersionInfo
 	hwVersions        map[string]int
-	cbtEnabled        map[bool]int
+	cbtEnabled        map[string]int
 	vcenterVersion    string
 	vcenterAPIVersion string
 	esxiVersionsLock  sync.RWMutex
@@ -21,7 +21,7 @@ func NewClusterInfo() *ClusterInfo {
 	info := &ClusterInfo{
 		esxiVersions: make(map[string]ESXiVersionInfo),
 		hwVersions:   make(map[string]int),
-		cbtEnabled:   make(map[bool]int),
+		cbtEnabled:   make(map[string]int),
 	}
 	return info
 }
@@ -117,7 +117,7 @@ func (c *ClusterInfo) MarkHostForProcessing(hostname string) (string, bool) {
 }
 
 // SetCbtData Set a node as being enabled or disabled for CBT
-func (c *ClusterInfo) SetCbtData(enabled bool) {
+func (c *ClusterInfo) SetCbtData(enabled string) {
 	c.esxiVersionsLock.RLock()
 	defer c.esxiVersionsLock.RUnlock()
 
@@ -126,12 +126,12 @@ func (c *ClusterInfo) SetCbtData(enabled bool) {
 
 // GetCbtData Get the CBT enabled settings for vms.  This will be a count of how
 // many VMs are enabled (true) and how many are disabled (false).
-func (c *ClusterInfo) GetCbtData() map[bool]int {
+func (c *ClusterInfo) GetCbtData() map[string]int {
 	c.esxiVersionsLock.RLock()
 	defer c.esxiVersionsLock.RUnlock()
 
 	// Make a copy
-	cbtEnabled := map[bool]int{}
+	cbtEnabled := map[string]int{}
 	for h, v := range c.cbtEnabled {
 		cbtEnabled[h] = v
 	}

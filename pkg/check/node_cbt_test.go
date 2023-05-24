@@ -1,13 +1,17 @@
 package check
 
 import (
-	"k8s.io/component-base/metrics/legacyregistry"
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/component-base/metrics/legacyregistry"
 )
 
 var (
@@ -59,8 +63,8 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="DISABLED"} 3
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 0
+            vsphere_vm_cbt_checks{cbt="disabled"} 3
+            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -77,8 +81,8 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="DISABLED"} 3
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 0
+            vsphere_vm_cbt_checks{cbt="disabled"} 3
+            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -95,8 +99,8 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="ENABLED"} 3
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 0
+            vsphere_vm_cbt_checks{cbt="enabled"} 3
+            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -114,9 +118,9 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="DISABLED"} 2
-            vsphere_vm_cbt_checks{cbt="ENABLED"} 1
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 1
+            vsphere_vm_cbt_checks{cbt="disabled"} 2
+            vsphere_vm_cbt_checks{cbt="enabled"} 1
+            vsphere_vm_cbt_checks{cbt="mismatch"} 1
 `,
 		},
 		{
@@ -133,8 +137,8 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="DISABLED"} 3
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 0
+            vsphere_vm_cbt_checks{cbt="disabled"} 3
+            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -152,9 +156,9 @@ func TestVmCbtProperties(t *testing.T) {
 			expectedMetrics: `
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
-            vsphere_vm_cbt_checks{cbt="DISABLED"} 1
-            vsphere_vm_cbt_checks{cbt="ENABLED"} 2
-            vsphere_vm_cbt_checks{cbt="MISMATCH"} 1
+            vsphere_vm_cbt_checks{cbt="disabled"} 1
+            vsphere_vm_cbt_checks{cbt="enabled"} 2
+            vsphere_vm_cbt_checks{cbt="mismatch"} 1
 `,
 		},
 	}
@@ -163,7 +167,7 @@ func TestVmCbtProperties(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			check := CollectNodeCBT{
-				lastMetricEmission: map[bool]int{},
+				lastMetricEmission: map[string]int{},
 			}
 
 			simctx, cleanup, err := setupSimulator(test.kubeClient, defaultModel)
@@ -201,4 +205,32 @@ func TestVmCbtProperties(t *testing.T) {
 			}
 		})
 	}
+}
+
+// getVirtualMachine returns VirtualMachine based on provider ID passed in.  This will
+// also load all properties related to VM using NodeProperties
+func getVirtualMachine(ctx *CheckContext, dc *object.Datacenter, providerID string) (*mo.VirtualMachine, error) {
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	defer cancel()
+
+	s := object.NewSearchIndex(ctx.VMClient)
+	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(providerID, "vsphere://")))
+	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
+	}
+	if svm == nil {
+		return nil, fmt.Errorf("unable to find VM by UUID %s", vmUUID)
+	}
+
+	// Load VM properties
+	vm := object.NewVirtualMachine(ctx.VMClient, svm.Reference())
+
+	var vmo mo.VirtualMachine
+	err = vm.Properties(tctx, vm.Reference(), NodeProperties, &vmo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load properties for VM %s: %s", vmUUID, err)
+	}
+
+	return &vmo, nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -158,32 +157,4 @@ func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Referenc
 	tagManager := ctx.TagManager
 	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
 	return attachedTags, err
-}
-
-// getVirtualMachine returns VirtualMachine based on provider ID passed in.  This will
-// also load all properties related to VM using NodeProperties
-func getVirtualMachine(ctx *CheckContext, dc *object.Datacenter, providerID string) (*mo.VirtualMachine, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-
-	s := object.NewSearchIndex(ctx.VMClient)
-	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(providerID, "vsphere://")))
-	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
-	}
-	if svm == nil {
-		return nil, fmt.Errorf("unable to find VM by UUID %s", vmUUID)
-	}
-
-	// Load VM properties
-	vm := object.NewVirtualMachine(ctx.VMClient, svm.Reference())
-
-	var vmo mo.VirtualMachine
-	err = vm.Properties(tctx, vm.Reference(), NodeProperties, &vmo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load properties for VM %s: %s", vmUUID, err)
-	}
-
-	return &vmo, nil
 }

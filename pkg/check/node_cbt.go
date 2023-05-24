@@ -13,7 +13,7 @@ import (
 
 // CollectNodeCBT emits metric with CBT Config of each VM
 type CollectNodeCBT struct {
-	lastMetricEmission map[bool]int
+	lastMetricEmission map[string]int
 }
 
 var _ NodeCheck = &CollectNodeCBT{}
@@ -21,6 +21,8 @@ var _ NodeCheck = &CollectNodeCBT{}
 const (
 	cbtMismatchLabel = "cbt"
 	CbtProperty      = "ctkEnabled"
+	cbtEnabled       = "enabled"
+	cbtDisabled      = "disabled"
 )
 
 var (
@@ -54,9 +56,9 @@ func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.Virt
 		if config.GetOptionValue().Key == CbtProperty {
 			klog.V(2).Infof("Found ctkEnabled property for node %v with value %v", node.Name, config.GetOptionValue().Value)
 			if strings.EqualFold(fmt.Sprintf("%v", config.GetOptionValue().Value), "TRUE") {
-				ctx.ClusterInfo.SetCbtData(true)
+				ctx.ClusterInfo.SetCbtData(cbtEnabled)
 			} else {
-				ctx.ClusterInfo.SetCbtData(false)
+				ctx.ClusterInfo.SetCbtData(cbtDisabled)
 			}
 			propFound = true
 			break
@@ -64,7 +66,7 @@ func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.Virt
 	}
 	if !propFound {
 		klog.V(2).Infof("Property not found for node %v", node.Name)
-		ctx.ClusterInfo.SetCbtData(false)
+		ctx.ClusterInfo.SetCbtData(cbtDisabled)
 	}
 
 	return nil
@@ -77,32 +79,22 @@ func (c *CollectNodeCBT) FinishCheck(ctx *CheckContext) {
 		c.lastMetricEmission[k] = 0
 	}
 
-	klog.V(2).Infof("Enabled (%v) Disabled (%v)", cbtData[true], cbtData[false])
-	if cbtData[true] > 0 && cbtData[false] > 0 {
-		cbtMismatchMetric.WithLabelValues("MISMATCH").Set(1)
+	klog.V(2).Infof("Enabled (%v) Disabled (%v)", cbtData[cbtEnabled], cbtData[cbtDisabled])
+	if cbtData[cbtEnabled] > 0 && cbtData[cbtDisabled] > 0 {
+		cbtMismatchMetric.WithLabelValues("mismatch").Set(1)
 	} else {
-		cbtMismatchMetric.WithLabelValues("MISMATCH").Set(0)
+		cbtMismatchMetric.WithLabelValues("mismatch").Set(0)
 	}
 
 	// Set the counts of enabled vs disabled
 	for cbtEnabled, count := range cbtData {
 		klog.V(4).Infof("CBT (%v): %v", cbtEnabled, count)
-		cbtMismatchMetric.WithLabelValues(metricKey(cbtEnabled)).Set(float64(count))
+		cbtMismatchMetric.WithLabelValues(cbtEnabled).Set(float64(count))
 	}
 
 	for k, v := range c.lastMetricEmission {
 		if v == 0 {
-			cbtMismatchMetric.WithLabelValues(metricKey(k)).Set(0)
+			cbtMismatchMetric.WithLabelValues(k).Set(0)
 		}
 	}
-
-	return
-}
-
-// metricKey util method to just convert boolean flag to ENABLED/DISABLED for metrics
-func metricKey(enabled bool) string {
-	if enabled {
-		return "ENABLED"
-	}
-	return "DISABLED"
 }
