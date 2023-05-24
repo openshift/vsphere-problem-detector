@@ -80,12 +80,6 @@ func (c *CollectNodeCBT) FinishCheck(ctx *CheckContext) {
 	}
 
 	klog.V(2).Infof("Enabled (%v) Disabled (%v)", cbtData[cbtEnabled], cbtData[cbtDisabled])
-	if cbtData[cbtEnabled] > 0 && cbtData[cbtDisabled] > 0 {
-		cbtMismatchMetric.WithLabelValues("mismatch").Set(1)
-	} else {
-		cbtMismatchMetric.WithLabelValues("mismatch").Set(0)
-	}
-
 	// Set the counts of enabled vs disabled
 	for cbtEnabled, count := range cbtData {
 		klog.V(4).Infof("CBT (%v): %v", cbtEnabled, count)

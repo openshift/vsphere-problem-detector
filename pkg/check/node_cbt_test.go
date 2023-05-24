@@ -64,7 +64,6 @@ func TestVmCbtProperties(t *testing.T) {
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="disabled"} 3
-            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -82,7 +81,6 @@ func TestVmCbtProperties(t *testing.T) {
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="disabled"} 3
-            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -100,7 +98,6 @@ func TestVmCbtProperties(t *testing.T) {
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="enabled"} 3
-            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -120,7 +117,6 @@ func TestVmCbtProperties(t *testing.T) {
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="disabled"} 2
             vsphere_vm_cbt_checks{cbt="enabled"} 1
-            vsphere_vm_cbt_checks{cbt="mismatch"} 1
 `,
 		},
 		{
@@ -138,7 +134,6 @@ func TestVmCbtProperties(t *testing.T) {
 			# HELP vsphere_vm_cbt_checks [ALPHA] Boolean metric based on whether ctkEnabled is consistent or not across all nodes in the cluster.
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="disabled"} 3
-            vsphere_vm_cbt_checks{cbt="mismatch"} 0
 `,
 		},
 		{
@@ -158,7 +153,6 @@ func TestVmCbtProperties(t *testing.T) {
             # TYPE vsphere_vm_cbt_checks gauge
             vsphere_vm_cbt_checks{cbt="disabled"} 1
             vsphere_vm_cbt_checks{cbt="enabled"} 2
-            vsphere_vm_cbt_checks{cbt="mismatch"} 1
 `,
 		},
 	}
