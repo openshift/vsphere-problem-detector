@@ -56,8 +56,8 @@ func TestParseConfigMap(t *testing.T) {
 		},
 		{
 			name:           "ConfigMap with valid config yaml, explicitly disabled",
-			configMap:      getCM(map[string]string{configKey: "disabled: true"}),
-			expectedConfig: &DetectorConfig{Disabled: true},
+			configMap:      getCM(map[string]string{configKey: "alertsDisabled: true"}),
+			expectedConfig: &DetectorConfig{AlertsDisabled: true},
 			expectError:    false,
 		},
 		{

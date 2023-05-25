@@ -59,6 +59,14 @@ var (
 		},
 		[]string{reasonLabel},
 	)
+
+	alertsDisabledMetric = metrics.NewGauge(
+		&metrics.GaugeOpts{
+			Name:           "vsphere_problem_detector_disabled_alerts",
+			Help:           "Indicates that vsphere-problem-detector alerts has been disabled.",
+			StabilityLevel: metrics.ALPHA,
+		},
+	)
 )
 
 func init() {
@@ -67,4 +75,5 @@ func init() {
 	legacyregistry.MustRegister(nodeCheckTotalMetric)
 	legacyregistry.MustRegister(nodeCheckErrrorMetric)
 	legacyregistry.MustRegister(syncErrrorMetric)
+	legacyregistry.MustRegister(alertsDisabledMetric)
 }

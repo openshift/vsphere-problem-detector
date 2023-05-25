@@ -93,7 +93,7 @@ func NewVSphereProblemDetectorController(
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
 	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
-	operatorConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	operatorConfigMapInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().ConfigMaps()
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
@@ -145,13 +145,24 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return nil
 	}
 
-	detectorDisabled, err := c.detectorDisabled()
+	cfg, err := ParseConfigMap(c.operatorConfigMapLister)
 	if err != nil {
 		return err
 	}
-	if detectorDisabled {
+	if cfg.AlertsDisabled {
+		alertsDisabledMetric.Set(1)
+	} else {
+		alertsDisabledMetric.Set(0)
+	}
+	if cfg.Disabled {
+		// disable all alerts when the detector itself is disabled
+		alertsDisabledMetric.Set(1)
 		klog.V(4).Infof("vsphere-problem-detector is disabled via ConfigMap")
-		return nil
+		// Reset all conditions
+		return c.updateConditions(ctx, clusterCheckResult{
+			checkError:   nil,
+			blockUpgrade: false,
+		})
 	}
 
 	clusterInfo := util.NewClusterInfo()
@@ -335,13 +346,4 @@ func (c *vSphereProblemDetectorController) platformSupported() (bool, error) {
 		return false, nil
 	}
 	return true, nil
-}
-
-func (c *vSphereProblemDetectorController) detectorDisabled() (bool, error) {
-	cfg, err := ParseConfigMap(c.operatorConfigMapLister)
-	if err != nil {
-		return false, err
-	}
-
-	return cfg.Disabled, nil
 }

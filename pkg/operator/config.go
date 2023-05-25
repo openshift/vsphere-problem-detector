@@ -6,16 +6,20 @@ import (
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog/v2"
 )
 
 type DetectorConfig struct {
-	Disabled bool `json:"disabled,omitempty"`
+	Disabled       bool `yaml:"disabled,omitempty"`
+	AlertsDisabled bool `yaml:"alertsDisabled,omitempty"`
 }
 
 var (
 	defaultConfig = DetectorConfig{
-		// detector is enabled by default
+		// Detector is enabled by default
 		Disabled: false,
+		// Alerts are enabled by default
+		AlertsDisabled: false,
 	}
 )
 
@@ -29,6 +33,7 @@ func ParseConfigMap(lister listerv1.ConfigMapLister) (*DetectorConfig, error) {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Missing ConfigMap indicates default config
+			klog.V(4).Infof("Using default config, %s does not exist", detectorConfigMapName)
 			return &defaultConfig, nil
 		}
 		return nil, err
@@ -40,9 +45,10 @@ func ParseConfigMap(lister listerv1.ConfigMapLister) (*DetectorConfig, error) {
 	}
 
 	config := defaultConfig
-	err = yaml.Unmarshal([]byte(data), &config)
+	err = yaml.UnmarshalStrict([]byte(data), &config)
 	if err != nil {
 		return nil, fmt.Errorf("invalid format of ConfigMap %s: %s", detectorConfigMapName, err)
 	}
+	klog.V(4).Infof("Parsed ConfigMap %s: %+v", detectorConfigMapName, config)
 	return &config, nil
 }
