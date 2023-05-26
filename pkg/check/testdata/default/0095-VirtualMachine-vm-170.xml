@@ -311,6 +311,10 @@
         <key>govcsim</key>
         <value XMLSchema-instance:type="xsd:string">TRUE</value>
       </extraConfig>
+      <extraConfig XMLSchema-instance:type="OptionValue">
+        <key>ctkEnabled</key>
+        <value XMLSchema-instance:type="xsd:string">TRUE</value>
+      </extraConfig>
       <bootOptions></bootOptions>
       <firmware>bios</firmware>
     </val>

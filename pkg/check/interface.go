@@ -3,16 +3,17 @@ package check
 import (
 	"context"
 	"flag"
-	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"time"
 
 	ocpv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/legacy-cloud-providers/vsphere"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 var (
@@ -42,6 +43,9 @@ var (
 		&CheckNodeDiskPerf{},
 		&CheckComputeClusterPermissions{},
 		&CheckResourcePoolPermissions{},
+		&CollectNodeCBT{
+			lastMetricEmission: map[string]int{},
+		},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
