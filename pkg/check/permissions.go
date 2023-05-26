@@ -179,22 +179,8 @@ func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissio
 	return nil
 }
 
-func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string) error {
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return err
-	}
-	ds, err := getDataStoreByName(ctx, dataStoreName, dc)
-	if err != nil {
-		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
-		return err
-	}
-	if err := comparePrivileges(ctx.Context, ctx.Username, ds.Reference(), ctx.AuthManager, permissions[permissionDatastore]); err != nil {
+func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string, dsRef types.ManagedObjectReference) error {
+	if err := comparePrivileges(ctx.Context, ctx.Username, dsRef, ctx.AuthManager, permissions[permissionDatastore]); err != nil { //
 		return fmt.Errorf("missing privileges for datastore %s: %s", dataStoreName, err.Error())
 	}
 	return nil
@@ -213,9 +199,21 @@ func getFolderReference(ctx context.Context, path string, finder *find.Finder) (
 // installation. each group of privileges will be checked for missing privileges.
 func CheckAccountPermissions(ctx *CheckContext) error {
 	var errs []error
-	err := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore)
+	matchinDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
+	if err != nil {
+		return err
+	}
+
+	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, matchinDC)
 	if err != nil {
 		errs = append(errs, err)
+	}
+
+	if ds != nil {
+		err = checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	err = checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)

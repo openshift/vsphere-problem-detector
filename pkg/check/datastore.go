@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vmware/govmomi/property"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -29,6 +28,9 @@ const (
 	dataCenterType        = "Datacenter"
 	DatastoreInfoProperty = "info"
 	SummaryProperty       = "summary"
+
+	inTreeProvisionerName = "kubernetes.io/vsphere-volume"
+	csiProvisionerName    = "csi.vsphere.vmware.com"
 
 	dataStoreType = "type"
 )
@@ -92,7 +94,8 @@ func CheckStorageClasses(ctx *CheckContext) error {
 	dsTypes := make(dataStoreTypeCollector)
 	for i := range scs {
 		sc := scs[i]
-		if sc.Provisioner != "kubernetes.io/vsphere-volume" {
+		if sc.Provisioner != inTreeProvisionerName &&
+			sc.Provisioner != csiProvisionerName {
 			klog.V(4).Infof("Skipping storage class %s: not a vSphere class", sc.Name)
 			continue
 		}
@@ -278,33 +281,37 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 
 func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeCollector) error {
 	var errs []error
-	if err := checkForDatastoreCluster(ctx, dsName, dsTypes); err != nil {
-		errs = append(errs, err)
-	}
-	if err := checkDatastorePrivileges(ctx, dsName); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.NewAggregate(errs)
-}
-
-func checkDataStoreWithURL(ctx *CheckContext dsURL string, dsTypes dataStoreTypeCollector) error {
-	var errs []error
-	if err := checkForDatastoreCluster(ctx, dsName, dsTypes); err != nil {
-		errs = append(errs, err)
-	}
-	if err := checkDatastorePrivileges(ctx, dsName); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.NewAggregate(errs)
-}
-
-func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dsTypes dataStoreTypeCollector) error {
-	matchingDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
+	dsMo, err := getDataStoreMoByName(ctx, dsName)
 	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
 		return err
 	}
 
+	if err := checkForDatastoreCluster(ctx, dsMo, dsName, dsTypes); err != nil {
+		errs = append(errs, err)
+	}
+	if err := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.NewAggregate(errs)
+}
+
+func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) error {
+	var errs []error
+	dsMo, err := getDatastoreByURL(ctx, dsURL)
+	if err != nil {
+		return err
+	}
+
+	if err := checkForDatastoreCluster(ctx, dsMo, dsURL, dsTypes); err != nil {
+		errs = append(errs, err)
+	}
+	if err := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.NewAggregate(errs)
+}
+
+func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreName string, dsTypes dataStoreTypeCollector) error {
 	// Collect DS type
 	dsType := dsMo.Summary.Type
 	klog.V(4).Infof("Datastore %s is of type %s", dataStoreName, dsType)
@@ -313,7 +320,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dsTypes data
 	// list datastore cluster
 	m := view.NewManager(ctx.VMClient)
 	kind := []string{"StoragePod"}
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
