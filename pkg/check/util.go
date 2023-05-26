@@ -37,10 +37,20 @@ func getDataStoreByName(ctx *CheckContext, dsName string, dc *object.Datacenter)
 	return ds, nil
 }
 
-func getDatastoreByURL(ctx *CheckContext, dsURL string, dc *object.Datacenter) (mo.Datastore, error) {
+func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 	var dsMo mo.Datastore
+
+	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
+		return dsMo, errors.New("vcenter instance not found in the virtual center map")
+	}
+
+	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
+	if err != nil {
+		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
+		return dsMo, err
+	}
 
 	finder := find.NewFinder(ctx.VMClient, false)
 	finder.SetDatacenter(dc)
@@ -90,9 +100,10 @@ func getDataStoreMoByName(ctx *CheckContext, datastoreName string) (mo.Datastore
 	}
 	ds, err := getDataStoreByName(ctx, datastoreName, dc)
 	if err != nil {
-		klog.Errorf("error getting datastore %s: %v", dataStoreName, err)
-		return err
+		klog.Errorf("error getting datastore %s: %v", datastoreName, err)
+		return dsMo, err
 	}
+	return getDatastore(ctx, ds.Reference())
 }
 
 func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
