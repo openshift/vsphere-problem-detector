@@ -77,9 +77,9 @@ func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
 	}
 
 	for _, ldsmo := range dsMoList {
-		if dsMo.Info.GetDatastoreInfo().Url == dsURL {
+		if ldsmo.Info.GetDatastoreInfo().Url == dsURL {
 			klog.V(4).Infof("Found datastore MoRef %v for datastoreURL: %q in datacenter: %q",
-				dsMo.Reference(), dsURL, dc.InventoryPath)
+				ldsmo.Reference(), dsURL, dc.InventoryPath)
 			return ldsmo, nil
 		}
 	}

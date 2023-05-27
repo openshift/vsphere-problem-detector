@@ -21,6 +21,7 @@ import (
 const (
 	dsParameter            = "datastore"
 	storagePolicyParameter = "storagepolicyname"
+	dataStoreURL           = "datastoreurl"
 	// Maximum length of <cluster-id>-dynamic-pvc-<uuid> for volume names.
 	// Kubernetes uses 90, https://github.com/kubernetes/kubernetes/blob/93d288e2a47fa6d497b50d37c8b3a04e91da4228/pkg/volume/vsphere_volume/vsphere_volume_util.go#L100
 	// Using 63 to work around https://bugzilla.redhat.com/show_bug.cgi?id=1926943
@@ -105,6 +106,11 @@ func CheckStorageClasses(ctx *CheckContext) error {
 			case dsParameter:
 				if err := checkDataStore(ctx, v, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
+					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+				}
+			case dataStoreURL:
+				if err := checkDataStoreWithURL(ctx, v, dsTypes); err != nil {
+					klog.V(2).Infof("Checking storageclass %s: %v", sc.Name, err)
 					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
 				}
 			case storagePolicyParameter:
@@ -280,6 +286,7 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 }
 
 func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeCollector) error {
+	klog.V(2).Infof("checking datastore %s for permissions", dsName)
 	var errs []error
 	dsMo, err := getDataStoreMoByName(ctx, dsName)
 	if err != nil {
@@ -296,6 +303,7 @@ func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeColle
 }
 
 func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) error {
+	klog.V(2).Infof("checking datastore %s for permissions", dsURL)
 	var errs []error
 	dsMo, err := getDatastoreByURL(ctx, dsURL)
 	if err != nil {
