@@ -180,7 +180,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]string, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
-	c, err := pbm.NewClient(tctx, ctx.VMClient)
+	pbmClient, err := pbm.NewClient(tctx, ctx.VMClient)
 	if err != nil {
 		return nil, fmt.Errorf("getPolicyDatastores: error creating pbm client: %v", err)
 	}
@@ -199,7 +199,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	var content []vim.ObjectContent
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
-	err = v.Retrieve(tctx, kind, []string{"Name"}, &content)
+	err = v.Retrieve(tctx, kind, []string{"name"}, &content)
 	_ = v.Destroy(tctx)
 	if err != nil {
 		return nil, fmt.Errorf("getPolicyDatastores: error listing datastores: %v", err)
@@ -226,7 +226,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	// Match the datastores with the policy
 	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
-	res, err := c.CheckRequirements(tctx, hubs, nil, req)
+	res, err := pbmClient.CheckRequirements(tctx, hubs, nil, req)
 	if err != nil {
 		return nil, fmt.Errorf("getPolicyDatastores: error fetching matching datastores: %v", err)
 	}
