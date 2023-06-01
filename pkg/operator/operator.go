@@ -26,15 +26,16 @@ import (
 )
 
 type vSphereProblemDetectorController struct {
-	operatorClient       *OperatorClient
-	kubeClient           kubernetes.Interface
-	infraLister          infralister.InfrastructureLister
-	secretLister         corelister.SecretLister
-	nodeLister           corelister.NodeLister
-	pvLister             corelister.PersistentVolumeLister
-	scLister             storagelister.StorageClassLister
-	cloudConfigMapLister corelister.ConfigMapLister
-	eventRecorder        events.Recorder
+	operatorClient          *OperatorClient
+	kubeClient              kubernetes.Interface
+	infraLister             infralister.InfrastructureLister
+	secretLister            corelister.SecretLister
+	nodeLister              corelister.NodeLister
+	pvLister                corelister.PersistentVolumeLister
+	scLister                storagelister.StorageClassLister
+	cloudConfigMapLister    corelister.ConfigMapLister
+	operatorConfigMapLister corelister.ConfigMapLister
+	eventRecorder           events.Recorder
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
 	clusterChecks map[string]check.ClusterCheck
@@ -92,24 +93,26 @@ func NewVSphereProblemDetectorController(
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
 	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	operatorConfigMapInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().ConfigMaps()
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
 	c := &vSphereProblemDetectorController{
-		operatorClient:       operatorClient,
-		kubeClient:           kubeClient,
-		secretLister:         secretInformer.Lister(),
-		nodeLister:           nodeInformer.Lister(),
-		pvLister:             pvInformer.Lister(),
-		scLister:             scInformer.Lister(),
-		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
-		infraLister:          configInformer.Lister(),
-		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
-		clusterChecks:        check.DefaultClusterChecks,
-		nodeChecks:           check.DefaultNodeChecks,
-		backoff:              defaultBackoff,
-		checkerFunc:          newVSphereChecker,
-		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
+		operatorClient:          operatorClient,
+		kubeClient:              kubeClient,
+		secretLister:            secretInformer.Lister(),
+		nodeLister:              nodeInformer.Lister(),
+		pvLister:                pvInformer.Lister(),
+		scLister:                scInformer.Lister(),
+		cloudConfigMapLister:    cloudConfigMapInformer.Lister(),
+		operatorConfigMapLister: operatorConfigMapInformer.Lister(),
+		infraLister:             configInformer.Lister(),
+		eventRecorder:           eventRecorder.WithComponentSuffix(controllerName),
+		clusterChecks:           check.DefaultClusterChecks,
+		nodeChecks:              check.DefaultNodeChecks,
+		backoff:                 defaultBackoff,
+		checkerFunc:             newVSphereChecker,
+		nextCheck:               time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
@@ -118,6 +121,7 @@ func NewVSphereProblemDetectorController(
 		pvInformer.Informer(),
 		scInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
+		operatorConfigMapInformer.Informer(),
 	).ToController(controllerName, c.eventRecorder)
 }
 
@@ -137,9 +141,28 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if err != nil {
 		return err
 	}
-
 	if !platformSupported {
 		return nil
+	}
+
+	cfg, err := ParseConfigMap(c.operatorConfigMapLister)
+	if err != nil {
+		return err
+	}
+	if cfg.AlertsDisabled {
+		alertsDisabledMetric.Set(1)
+	} else {
+		alertsDisabledMetric.Set(0)
+	}
+	if cfg.Disabled {
+		// disable all alerts when the detector itself is disabled
+		alertsDisabledMetric.Set(1)
+		klog.V(4).Infof("vsphere-problem-detector is disabled via ConfigMap")
+		// Reset all conditions
+		return c.updateConditions(ctx, clusterCheckResult{
+			checkError:   nil,
+			blockUpgrade: false,
+		})
 	}
 
 	clusterInfo := util.NewClusterInfo()
