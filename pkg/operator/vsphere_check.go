@@ -14,7 +14,6 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -23,6 +22,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
+
+	vsphereconfig "k8s.io/cloud-provider-vsphere/pkg/common/config"
+
+	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	"github.com/openshift/vsphere-problem-detector/pkg/version"
 )
 
 type vSphereCheckerInterface interface {
@@ -44,25 +50,26 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	v.controller.metricsCollector.StartMetricCollection()
 
 	resultCollector := NewResultsCollector()
-	vmConfig, vmClient, restClient, err := v.connect(ctx)
+
+	checkContext, err := v.connect(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
 	defer func() {
-		if err := vmClient.Logout(ctx); err != nil {
+		if err := checkContext.GovmomiClient.Logout(ctx); err != nil {
 			klog.Errorf("Failed to logout: %v", err)
 		}
 	}()
 
 	// Get the fully-qualified vsphere username
-	sessionMgr := session.NewManager(vmClient.Client)
+	sessionMgr := session.NewManager(checkContext.VMClient)
 	user, err := sessionMgr.UserSession(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
-	authManager := object.NewAuthorizationManager(vmClient.Client)
+	authManager := object.NewAuthorizationManager(checkContext.VMClient)
 
 	checkContext := &check.CheckContext{
 		Context:     ctx,
@@ -77,6 +84,17 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		Cache:            check.NewCheckCache(vmClient.Client),
 		MetricsCollector: v.controller.metricsCollector,
 	}
+	infra, err := v.controller.GetInfrastructure(ctx)
+	if err != nil {
+		return nil, err
+	}
+	checkContext.Context = ctx
+	checkContext.AuthManager = authManager
+	checkContext.Username = user.UserName
+	checkContext.KubeClient = v.controller
+	checkContext.ClusterInfo = clusterInfo
+
+	convertToPlatformSpec(infra, checkContext)
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 
@@ -98,39 +116,115 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	return resultCollector, nil
 }
 
-func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, *rest.Client, error) {
+// The idea here is to create a single source of truth in
+// regards to the topology of vSphere infra.
+// The API Platform Spec seems like a good place to
+// shove this data into.
+func convertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *check.CheckContext) {
+	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
+
+	if infra.Spec.PlatformSpec.VSphere != nil {
+		infra.Spec.PlatformSpec.VSphere.DeepCopyInto(checkContext.PlatformSpec)
+	}
+
+	if checkContext.VMConfig != nil {
+		config := checkContext.VMConfig
+		if checkContext.PlatformSpec != nil {
+			if len(checkContext.PlatformSpec.VCenters) != 0 {
+				// we need to check if we really need to add to VCenters and FailureDomains
+				vcenter := vCentersToMap(checkContext.PlatformSpec.VCenters)
+
+				// vcenter is missing from the map, add it...
+				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
+					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+			} else {
+				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+			}
+		}
+	}
+}
+
+func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	if ccmVcenter, ok := config.VirtualCenter[config.Workspace.VCenterIP]; ok {
+		datacenters := strings.Split(ccmVcenter.Datacenters, ",")
+
+		platformSpec.VCenters = append(platformSpec.VCenters, ocpv1.VSpherePlatformVCenterSpec{
+			Server:      config.Workspace.VCenterIP,
+			Datacenters: datacenters,
+		})
+
+		platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
+			Name:   "",
+			Region: "",
+			Zone:   "",
+			Server: config.Workspace.VCenterIP,
+			Topology: ocpv1.VSpherePlatformTopology{
+				Datacenter:   config.Workspace.Datacenter,
+				Folder:       config.Workspace.Folder,
+				ResourcePool: config.Workspace.ResourcePoolPath,
+				Datastore:    config.Workspace.DefaultDatastore,
+			},
+		})
+	}
+}
+
+func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
+	vcenterMap := make(map[string]ocpv1.VSpherePlatformVCenterSpec, len(vcenters))
+	for _, v := range vcenters {
+		vcenterMap[v.Server] = v
+	}
+	return vcenterMap
+}
+
+func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, error) {
+
+	// todo: jcallen: blow this up...
+
+	// use api infra as the basis of
+	// variables instead of intree
+	// external won't have these values...
+
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
+	// external CCM configuration INI and yaml parser
+	// and backward compatible with intree
+	externalCfg, err := vsphereconfig.ReadConfig([]byte(cfgString))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config: %s", err)
+	}
+
+	// intree configuration
 	cfg, err := parseConfig(cfgString)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse config: %s", err)
+		return nil, fmt.Errorf("failed to parse config: %s", err)
 	}
 
-	username, password, err := c.getCredentials(cfg)
+	username, password, err := c.getCredentials(cfg.Workspace.VCenterIP)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	vmClient, restClient, err := newClient(ctx, cfg, username, password)
 	if err != nil {
 		if strings.Index(username, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(0)
 		}
 
 		if strings.Index(password, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(0)
 		}
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(1)
-		return nil, nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+		return nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
 	} else {
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
@@ -143,20 +237,30 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 	}
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient, restClient, nil
+
+	checkContext := &check.CheckContext{
+		Context:          ctx,
+		VMConfig:         cfg,
+		ExternalVMConfig: externalCfg,
+		GovmomiClient:    vmClient,
+		VMClient:         vmClient.Client,
+		TagManager:       vapitags.NewManager(restClient),
+	}
+
+	return checkContext, nil
 }
 
-func (c *vSphereChecker) getCredentials(cfg *vsphere.VSphereConfig) (string, string, error) {
+func (c *vSphereChecker) getCredentials(vCenterIP string) (string, string, error) {
 	secret, err := c.controller.secretLister.Secrets(operatorNamespace).Get(cloudCredentialsSecretName)
 	if err != nil {
 		return "", "", err
 	}
-	userKey := cfg.Workspace.VCenterIP + "." + "username"
+	userKey := vCenterIP + "." + "username"
 	username, ok := secret.Data[userKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, userKey)
 	}
-	passwordKey := cfg.Workspace.VCenterIP + "." + "password"
+	passwordKey := vCenterIP + "." + "password"
 	password, ok := secret.Data[passwordKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, passwordKey)
@@ -290,25 +394,17 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
 	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
 	defer cancel()
-
-	// Find datastore
-	finder := find.NewFinder(checkContext.VMClient, false)
-	dc, err := finder.Datacenter(tctx, checkContext.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access Datacenter %s: %s", checkContext.VMConfig.Workspace.Datacenter, err)
-	}
+	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
 
 	// Find VM reference in the datastore, by UUID
-	s := object.NewSearchIndex(dc.Client())
-	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
+	s := object.NewSearchIndex(checkContext.VMClient)
 	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
 	defer cancel()
-	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
+
+	// datacenter can be nil...
+	svm, err := s.FindByUuid(tctx, nil, vmUUID, true, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
-	}
-	if svm == nil {
-		return nil, fmt.Errorf("unable to find VM by UUID %s", vmUUID)
 	}
 
 	// Find VM properties

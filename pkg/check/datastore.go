@@ -9,13 +9,14 @@ import (
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 
-	configv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/govmomi/pbm"
 	"github.com/vmware/govmomi/pbm/types"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 const (
@@ -141,10 +142,21 @@ func CheckDefaultDatastore(ctx *CheckContext) error {
 	return checkDefaultDatastoreWithDSType(ctx, nil)
 }
 
+func getFailureDomainDatastores(ctx *CheckContext) []string {
+	dsNames := make([]string, 0, len(ctx.PlatformSpec.FailureDomains))
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		dsNames = append(dsNames, fd.Topology.Datastore)
+	}
+	return dsNames
+}
+
 func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) error {
-	dsName := ctx.VMConfig.Workspace.DefaultDatastore
-	if err := checkDataStore(ctx, dsName, dsTypes); err != nil {
-		return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+	dsNames := getFailureDomainDatastores(ctx)
+
+	for _, dsName := range dsNames {
+		if err := checkDataStore(ctx, dsName, dsTypes); err != nil {
+			return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+		}
 	}
 	return nil
 }
@@ -305,6 +317,7 @@ func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeColle
 func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) error {
 	klog.V(2).Infof("checking datastore %s for permissions", dsURL)
 	var errs []error
+
 	dsMo, err := getDatastoreByURL(ctx, dsURL)
 	if err != nil {
 		return err

@@ -1,9 +1,10 @@
 package check
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -43,10 +44,6 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 	}
 	c.computeClusters[cluster.Name] = cluster
 
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	if err := comparePrivileges(ctx.Context, ctx.Username, cluster.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
 		return fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())
 	}
@@ -57,17 +54,26 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 	var errs []error
 	readOnly := false
 
-	// If pre-existing resource pool was defined, only check cluster for read privilege
-	if ctx.VMConfig.Workspace.ResourcePoolPath != "" {
-		readOnly = true
-	}
+	if vm.ResourcePool != nil {
+		rp := object.NewResourcePool(ctx.VMClient, *vm.ResourcePool)
+		if rp != nil {
+			rpName, err := rp.ObjectName(ctx.Context)
+			if err != nil {
+				return err
+			}
 
-	err := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		return join(errs)
+			if !strings.HasSuffix(rpName, "Resources") {
+				readOnly = true
+			}
+		}
+
+		err := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if len(errs) > 0 {
+			return join(errs)
+		}
 	}
 	return nil
 }

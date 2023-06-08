@@ -5,15 +5,18 @@ import (
 	"flag"
 	"time"
 
-	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/vmware/govmomi"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	vsphereccm "k8s.io/cloud-provider-vsphere/pkg/common/config"
 	"k8s.io/legacy-cloud-providers/vsphere"
 
+	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
@@ -45,7 +48,7 @@ var (
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
 	// Add a property to this list when a NodeCheck uses it.
-	NodeProperties = []string{"config.extraConfig", "config.flags", "config.version", "runtime.host"}
+	NodeProperties = []string{"config.extraConfig", "config.flags", "config.version", "runtime.host", "resourcePool"}
 )
 
 // KubeClient is an interface between individual vSphere check and Kubernetes.
@@ -61,16 +64,20 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
+	Cache            VSphereCache
+	MetricsCollector *metrics.Collector
 	Context          context.Context
 	VMConfig         *vsphere.VSphereConfig
+	ExternalVMConfig *vsphereccm.Config
+	GovmomiClient    *govmomi.Client
 	VMClient         *vim25.Client
 	TagManager       *vapitags.Manager
 	Username         string
 	AuthManager      AuthManager
 	KubeClient       KubeClient
 	ClusterInfo      *util.ClusterInfo
-	Cache            VSphereCache
-	MetricsCollector *metrics.Collector
+	//Infra            *ocpv1.Infrastructure
+	PlatformSpec *ocpv1.VSpherePlatformSpec
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.
