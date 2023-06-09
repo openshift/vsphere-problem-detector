@@ -127,6 +127,10 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 		cfg.VirtualCenter[cfg.Workspace.VCenterIP].User = username
 	}
 
+	if strings.Index(username, "@") < 0 {
+		klog.Warningf("vCenter username for %s is without domain, please consider using username with full domain name", cfg.Workspace.VCenterIP)
+	}
+
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
 	return cfg, vmClient, restClient, nil
 }
