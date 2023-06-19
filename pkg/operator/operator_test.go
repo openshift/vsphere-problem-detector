@@ -16,8 +16,6 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestCheckForDeprecation(t *testing.T) {
@@ -340,10 +338,6 @@ func TestSync(t *testing.T) {
 					OperatorStatus: opv1.OperatorStatus{},
 				},
 			}
-			kubeClient := fake.NewSimpleClientset()
-			informerFactory := informers.NewSharedInformerFactory(kubeClient, time.Hour)
-			// the lister does not have any ConfigMap, implying the default config
-			configMapLister := informerFactory.Core().V1().ConfigMaps().Lister()
 
 			opClient := fakeop.NewSimpleClientset(storageInstance)
 			opInformerFactory := opinformers.NewSharedInformerFactory(opClient, 0)
@@ -363,11 +357,10 @@ func TestSync(t *testing.T) {
 						checkErr:       tc.mockCheckError,
 					}
 				},
-				operatorClient:          operatorClient,
-				infraLister:             &testInfraLister{},
-				backoff:                 defaultBackoff,
-				eventRecorder:           events.NewInMemoryRecorder("vsphere-problem-detector"),
-				operatorConfigMapLister: configMapLister,
+				operatorClient: operatorClient,
+				infraLister:    &testInfraLister{},
+				backoff:        defaultBackoff,
+				eventRecorder:  events.NewInMemoryRecorder("vsphere-problem-detector"),
 			}
 
 			err := vsphereProblemOperator.sync(context.TODO(), factory.NewSyncContext(controllerName, events.NewInMemoryRecorder("test-csi-driver")))
