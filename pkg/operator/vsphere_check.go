@@ -70,6 +70,8 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		Username:    user.UserName,
 		KubeClient:  v.controller,
 		ClusterInfo: clusterInfo,
+		// Each check run gets its own cache
+		Cache: check.NewCheckCache(vmClient.Client),
 	}
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
