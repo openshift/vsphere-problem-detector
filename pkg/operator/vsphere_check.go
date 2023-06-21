@@ -3,11 +3,10 @@ package operator
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"strings"
-
 	"github.com/vmware/govmomi/vapi/rest"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
+	"net/url"
+	"strings"
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
