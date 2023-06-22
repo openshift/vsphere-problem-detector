@@ -325,32 +325,10 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreNam
 	klog.V(4).Infof("Datastore %s is of type %s", dataStoreName, dsType)
 	dsTypes.addDataStore(dataStoreName, dsType)
 
-	// list datastore cluster
-	m := view.NewManager(ctx.VMClient)
-	kind := []string{"StoragePod"}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
+	content, err := ctx.Cache.GetStoragePods(ctx.Context)
 	if err != nil {
-		klog.Errorf("error listing datastore cluster: %+v", err)
-		return nil
+		return err
 	}
-	defer func() {
-		v.Destroy(tctx)
-	}()
-
-	var content []mo.StoragePod
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
-	if err != nil {
-		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
-		// it is possible that we do not actually have permission to fetch datastore clusters
-		// in which case rather than throwing an error - we will silently return nil, so as
-		// we don't trigger unnecessary alerts.
-		return nil
-	}
-
 	for _, ds := range content {
 		for _, child := range ds.Folder.ChildEntity {
 			tDS, err := getDatastore(ctx, child)

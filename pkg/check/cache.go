@@ -8,6 +8,7 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -28,12 +29,15 @@ type VSphereCache interface {
 	GetDatastoreMo(ctx context.Context, dcName, dsName string) (mo.Datastore, error)
 	// GetDatastoreByURL returns datastore by URL.
 	GetDatastoreMoByReference(ctx context.Context, dcName string, ref types.ManagedObjectReference) (mo.Datastore, error)
+	// GetDatastoreByURL returns all StoragePods in a datacenter
+	GetStoragePods(ctx context.Context) ([]mo.StoragePod, error)
 }
 
 // vSphereCache caches frequently accessed vCenter objects for a single check run.
 type vSphereCache struct {
 	vmClient    *vim25.Client
 	datacenters map[string]*cachedDatacenter
+	storagePods []mo.StoragePod
 	mutex       sync.Mutex
 }
 
@@ -237,4 +241,42 @@ func (c *vSphereCache) GetDatastoreMoByReference(ctx context.Context, dcName str
 	err = fmt.Errorf("couldn't find Datastore with reference %+v in datacenter %s", ref, dcName)
 	klog.Error(err)
 	return mo.Datastore{}, err
+}
+
+func (c *vSphereCache) GetStoragePods(ctx context.Context) ([]mo.StoragePod, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.storagePods != nil {
+		return c.storagePods, nil
+	}
+
+	// list datastore cluster
+	m := view.NewManager(c.vmClient)
+	kind := []string{"StoragePod"}
+	tctx, cancel := context.WithTimeout(ctx, *Timeout)
+	defer cancel()
+	v, err := m.CreateContainerView(tctx, c.vmClient.ServiceContent.RootFolder, kind, true)
+	if err != nil {
+		klog.Errorf("error listing datastore cluster: %+v", err)
+		// Don't alert on missing permissions
+		return nil, nil
+	}
+	defer func() {
+		v.Destroy(tctx)
+	}()
+
+	var content []mo.StoragePod
+	tctx, cancel = context.WithTimeout(ctx, *Timeout)
+	defer cancel()
+	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
+	if err != nil {
+		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
+		// it is possible that we do not actually have permission to fetch datastore clusters
+		// in which case rather than throwing an error - we will silently return nil, so as
+		// we don't trigger unnecessary alerts.
+		return nil, nil
+	}
+	c.storagePods = content
+	return content, nil
 }
