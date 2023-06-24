@@ -200,7 +200,7 @@ func (f *Folder) CreateFolder(ctx *Context, c *types.CreateFolder) soap.HasFault
 	r := &methods.CreateFolderBody{}
 
 	if folderHasChildType(&f.Folder, "Folder") {
-		name := f.escapeSpecialCharacters(c.Name)
+		name := escapeSpecialCharacters(c.Name)
 
 		if obj := ctx.Map.FindByName(name, f.ChildEntity); obj != nil {
 			r.Fault_ = Fault("", &types.DuplicateName{
@@ -228,7 +228,7 @@ func (f *Folder) CreateFolder(ctx *Context, c *types.CreateFolder) soap.HasFault
 	return r
 }
 
-func (f *Folder) escapeSpecialCharacters(name string) string {
+func escapeSpecialCharacters(name string) string {
 	name = strings.ReplaceAll(name, `%`, strings.ToLower(url.QueryEscape(`%`)))
 	name = strings.ReplaceAll(name, `/`, strings.ToLower(url.QueryEscape(`/`)))
 	name = strings.ReplaceAll(name, `\`, strings.ToLower(url.QueryEscape(`\`)))
@@ -367,9 +367,15 @@ func hostsWithDatastore(hosts []types.ManagedObjectReference, path string) []typ
 }
 
 func (c *createVM) Run(task *Task) (types.AnyType, types.BaseMethodFault) {
+	config := &c.req.Config
+	// escape special characters in vm name
+	if config.Name != escapeSpecialCharacters(config.Name) {
+		deepCopy(c.req.Config, config)
+		config.Name = escapeSpecialCharacters(config.Name)
+	}
+
 	vm, err := NewVirtualMachine(c.ctx, c.Folder.Self, &c.req.Config)
 	if err != nil {
-		folderRemoveChild(c.ctx, &c.Folder.Folder, vm)
 		return nil, err
 	}
 
@@ -770,6 +776,8 @@ func (f *Folder) PlaceVmsXCluster(ctx *Context, req *types.PlaceVmsXCluster) soa
 	}
 
 	body.Res = new(types.PlaceVmsXClusterResponse)
+	hostRequired := req.PlacementSpec.HostRecommRequired != nil && *req.PlacementSpec.HostRecommRequired
+	datastoreRequired := req.PlacementSpec.DatastoreRecommRequired != nil && *req.PlacementSpec.DatastoreRecommRequired
 
 	for _, spec := range specs {
 		pool := ctx.Map.Get(pools[rand.Intn(len(pools))]).(*ResourcePool)
@@ -787,6 +795,8 @@ func (f *Folder) PlaceVmsXCluster(ctx *Context, req *types.PlaceVmsXCluster) soa
 			}
 			body.Res.Returnval.Faults = append(body.Res.Returnval.Faults, faults)
 		} else {
+			var configSpec *types.VirtualMachineConfigSpec
+
 			res := types.ClusterRecommendation{
 				Key:        "1",
 				Type:       "V1",
@@ -797,15 +807,61 @@ func (f *Folder) PlaceVmsXCluster(ctx *Context, req *types.PlaceVmsXCluster) soa
 				Target:     &cluster.Self,
 			}
 
-			placementAction := types.ClusterInitialPlacementAction{
-				TargetHost: cluster.Host[rand.Intn(len(cluster.Host))],
-				Pool:       &pool.Self,
+			placementAction := types.ClusterClusterInitialPlacementAction{
+				Pool: pool.Self,
 			}
 
-			res.Action = append(res.Action, &types.ClusterClusterInitialPlacementAction{
-				ClusterInitialPlacementAction: placementAction,
-				ConfigSpec:                    &spec.ConfigSpec,
-			})
+			if hostRequired {
+				randomHost := cluster.Host[rand.Intn(len(cluster.Host))]
+				placementAction.TargetHost = &randomHost
+			}
+
+			if datastoreRequired {
+				configSpec = &spec.ConfigSpec
+
+				// TODO: This is just an initial implementation aimed at returning some data but it is not
+				// necessarily fully consistent, like we should ensure the host, if also required, has the
+				// datastore mounted.
+				ds := ctx.Map.Get(cluster.Datastore[rand.Intn(len(cluster.Datastore))]).(*Datastore)
+
+				if configSpec.Files == nil {
+					configSpec.Files = new(types.VirtualMachineFileInfo)
+				}
+				configSpec.Files.VmPathName = fmt.Sprintf("[%[1]s] %[2]s/%[2]s.vmx", ds.Name, spec.ConfigSpec.Name)
+
+				for _, change := range configSpec.DeviceChange {
+					dspec := change.GetVirtualDeviceConfigSpec()
+
+					if dspec.FileOperation != types.VirtualDeviceConfigSpecFileOperationCreate {
+						continue
+					}
+
+					switch dspec.Operation {
+					case types.VirtualDeviceConfigSpecOperationAdd:
+						device := dspec.Device
+						d := device.GetVirtualDevice()
+
+						switch device.(type) {
+						case *types.VirtualDisk:
+							switch b := d.Backing.(type) {
+							case types.BaseVirtualDeviceFileBackingInfo:
+								info := b.GetVirtualDeviceFileBackingInfo()
+								info.Datastore = types.NewReference(ds.Reference())
+
+								var dsPath object.DatastorePath
+								if dsPath.FromString(info.FileName) {
+									dsPath.Datastore = ds.Name
+									info.FileName = dsPath.String()
+								}
+							}
+						}
+					}
+				}
+
+				placementAction.ConfigSpec = configSpec
+			}
+
+			res.Action = append(res.Action, &placementAction)
 
 			body.Res.Returnval.PlacementInfos = append(body.Res.Returnval.PlacementInfos,
 				types.PlaceVmsXClusterResultPlacementInfo{
