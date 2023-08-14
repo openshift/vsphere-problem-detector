@@ -10,114 +10,28 @@ import (
 	"github.com/vmware/govmomi/property"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
-	"github.com/vmware/govmomi/vim25/types"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	dc, err := finder.Datacenter(tctx, dcName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
-	}
-	return dc, nil
+	return ctx.Cache.GetDatacenter(ctx.Context, dcName)
 }
 
 func getDataStoreByName(ctx *CheckContext, dsName string, dc *object.Datacenter) (*object.Datastore, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(dc)
-	ds, err := finder.Datastore(tctx, dsName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access datastore %s: %s", dsName, err)
-	}
-	return ds, nil
+	return ctx.Cache.GetDatastore(ctx.Context, dc.Name(), dsName)
 }
 
 func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	var dsMo mo.Datastore
-
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return dsMo, errors.New("vcenter instance not found in the virtual center map")
-	}
-
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return dsMo, err
-	}
-
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(dc)
-	datastores, err := finder.DatastoreList(tctx, "*")
-	if err != nil {
-		klog.Errorf("failed to get all the datastores. err: %+v", err)
-		return dsMo, err
-	}
-
-	var dsList []types.ManagedObjectReference
-	for _, ds := range datastores {
-		dsList = append(dsList, ds.Reference())
-	}
-
-	var dsMoList []mo.Datastore
-	pc := property.DefaultCollector(dc.Client())
-	properties := []string{DatastoreInfoProperty, "customValue"}
-	err = pc.Retrieve(tctx, dsList, properties, &dsMoList)
-	if err != nil {
-		klog.Errorf("failed to get Datastore managed objects from datastore objects."+
-			" dsObjList: %+v, properties: %+v, err: %v", dsList, properties, err)
-		return dsMo, err
-	}
-
-	for _, ldsmo := range dsMoList {
-		if ldsmo.Info.GetDatastoreInfo().Url == dsURL {
-			klog.V(4).Infof("Found datastore MoRef %v for datastoreURL: %q in datacenter: %q",
-				ldsmo.Reference(), dsURL, dc.InventoryPath)
-			return ldsmo, nil
-		}
-	}
-	err = fmt.Errorf("couldn't find Datastore given URL %q", dsURL)
-	klog.Error(err)
-	return dsMo, err
+	return ctx.Cache.GetDatastoreByURL(ctx.Context, ctx.VMConfig.Workspace.Datacenter, dsURL)
 }
 
 func getDataStoreMoByName(ctx *CheckContext, datastoreName string) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return dsMo, errors.New("vcenter instance not found in the virtual center map")
-	}
-
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return dsMo, err
-	}
-	ds, err := getDataStoreByName(ctx, datastoreName, dc)
-	if err != nil {
-		klog.Errorf("error getting datastore %s: %v", datastoreName, err)
-		return dsMo, err
-	}
-	return getDatastore(ctx, ds.Reference())
+	return ctx.Cache.GetDatastoreMo(ctx.Context, ctx.VMConfig.Workspace.Datacenter, datastoreName)
 }
 
 func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-	pc := property.DefaultCollector(ctx.VMClient)
-	properties := []string{DatastoreInfoProperty, SummaryProperty}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	err := pc.RetrieveOne(tctx, ref, properties, &dsMo)
-	if err != nil {
-		return dsMo, fmt.Errorf("failed to get datastore object from managed reference: %v", err)
-	}
-	return dsMo, nil
+	return ctx.Cache.GetDatastoreMoByReference(ctx.Context, ctx.VMConfig.Workspace.Datacenter, ref)
 }
 
 func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.ClusterComputeResource, error) {

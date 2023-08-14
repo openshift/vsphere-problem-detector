@@ -74,6 +74,7 @@ type CheckContext struct {
 	AuthManager AuthManager
 	KubeClient  KubeClient
 	ClusterInfo *util.ClusterInfo
+	Cache       VSphereCache
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.

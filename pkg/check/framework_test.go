@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+
 	"github.com/vmware/govmomi/vapi/rest"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
@@ -110,6 +111,7 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 		KubeClient:  kubeClient,
 		TagManager:  vapitags.NewManager(restClient),
 		ClusterInfo: clusterInfo,
+		Cache:       NewCheckCache(client),
 	}
 
 	ctx.Username = userSession.UserName
