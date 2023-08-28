@@ -25,7 +25,7 @@ func (c *CheckResourcePoolPermissions) StartCheck() error {
 	return nil
 }
 
-func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) error {
+func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) *CheckError {
 	resourcePool, resourcePoolPath, err := getResourcePool(ctx, vm.Reference())
 	if err != nil {
 		klog.Info("resource pool could not be obtained for %v", vm.Reference())
@@ -38,18 +38,17 @@ func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckCon
 	c.resourcePools[resourcePoolPath] = resourcePool
 
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
+		return &CheckError{"vcenter_not_found", errors.New("vcenter instance not found in the virtual center map")}
 	}
 
 	if err := comparePrivileges(ctx.Context, ctx.Username, resourcePool.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
-		return fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error())
+		return &CheckError{"resource_pool_missing_permissions", fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error())}
 	}
 
 	return nil
 }
 
-func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
-	var errs []error
+func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 
 	// Skip permission checks if pre-existing resource pool was not defined
 	if ctx.VMConfig.Workspace.ResourcePoolPath == "" {
@@ -58,14 +57,10 @@ func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Nod
 
 	err := c.checkResourcePoolPrivileges(ctx, vm)
 	if err != nil {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		return join(errs)
+		return err
 	}
 	return nil
 }
 
 func (c *CheckResourcePoolPermissions) FinishCheck(ctx *CheckContext) {
-	return
 }

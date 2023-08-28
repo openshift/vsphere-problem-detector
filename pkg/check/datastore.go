@@ -137,7 +137,7 @@ func CheckStorageClasses(ctx *CheckContext) error {
 }
 
 // CheckDefaultDatastore checks that the default data store name in vSphere config file is short enough.
-func CheckDefaultDatastore(ctx *CheckContext) error {
+func CheckDefaultDatastore(ctx *CheckContext) *CheckError {
 	return checkDefaultDatastoreWithDSType(ctx, nil)
 }
 

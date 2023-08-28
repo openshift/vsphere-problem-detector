@@ -75,7 +75,7 @@ type CheckContext struct {
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.
 // It returns result of the check.
-type ClusterCheck func(ctx *CheckContext) error
+type ClusterCheck func(ctx *CheckContext) *CheckError
 
 // Interface of a single vSphere node-level check.
 // Reason for separate node-level checks:
@@ -92,7 +92,7 @@ type NodeCheck interface {
 	// Check of a single node. It gets connection to vSphere, vSphere config, connection
 	// to Kubernetes and a node to check. Returns result of the check.
 	// Multiple CheckNodes can run in parallel, each for a different node!
-	CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error
+	CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError
 	// Finish current round of checks. The check may report metrics here.
 	// Since it's called serially for all checks, it should not perform too
 	// expensive calculations. In addition, it must respect ctx.Context.

@@ -25,7 +25,7 @@ func (c *CheckComputeClusterPermissions) StartCheck() error {
 	return nil
 }
 
-func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vm *mo.VirtualMachine, readOnly bool) error {
+func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vm *mo.VirtualMachine, readOnly bool) *CheckError {
 	cluster, err := getComputeCluster(ctx, vm.Runtime.Host.Reference())
 	if err != nil {
 		klog.Infof("compute cluster resource could not be obtained for %v", vm.Reference())
@@ -44,17 +44,16 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 	c.computeClusters[cluster.Name] = cluster
 
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
+		return &CheckError{"vcenter_not_found", errors.New("vcenter instance not found in the virtual center map")}
 	}
 
 	if err := comparePrivileges(ctx.Context, ctx.Username, cluster.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
-		return fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())
+		return &CheckError{"node_missing_permissions", fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())}
 	}
 	return nil
 }
 
-func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
-	var errs []error
+func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	readOnly := false
 
 	// If pre-existing resource pool was defined, only check cluster for read privilege
@@ -62,12 +61,9 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 		readOnly = true
 	}
 
-	err := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		return join(errs)
+	checkError := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
+	if checkError != nil {
+		return checkError
 	}
 	return nil
 }

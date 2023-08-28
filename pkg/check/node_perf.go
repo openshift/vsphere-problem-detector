@@ -122,7 +122,7 @@ func (c *CheckNodeDiskPerf) StartCheck() error {
 	return nil
 }
 
-func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine, mcd MetricCheckDef) error {
+func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine, mcd MetricCheckDef) *CheckError {
 	var (
 		hasError = false
 	)
@@ -186,13 +186,13 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		}
 	}
 	if hasError {
-		return errors.New(mcd.errorEventMessage)
+		return &CheckError{"failed_disk_latency", errors.New(mcd.errorEventMessage)}
 	}
 
 	return nil
 }
 
-func (c *CheckNodeDiskPerf) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
+func (c *CheckNodeDiskPerf) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	for _, mcd := range metricCheckDefs {
 		err := c.PerformMetricCheck(ctx, node, vm, mcd)
 		if err != nil {

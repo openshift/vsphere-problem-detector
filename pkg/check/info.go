@@ -30,7 +30,7 @@ func init() {
 
 // CollectClusterInfo grabs information about vSphere cluster and updates corresponding metrics.
 // It's not a vSphere check per se, just using the interface.
-func CollectClusterInfo(ctx *CheckContext) error {
+func CollectClusterInfo(ctx *CheckContext) *CheckError {
 	vCenterInfoMetric.Reset()
 	collectVCenterInfo(ctx)
 	return nil

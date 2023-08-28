@@ -11,14 +11,14 @@ import (
 
 // CheckFolderList tests that OCP has permissions to list volumes in Datastore.
 // This is necessary to create volumes.
-func CheckTaskPermissions(ctx *CheckContext) error {
+func CheckTaskPermissions(ctx *CheckContext) *CheckError {
 	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
 	defer cancel()
 
 	mgr := view.NewManager(ctx.VMClient)
 	view, err := mgr.CreateTaskView(tctx, ctx.VMClient.ServiceContent.TaskManager)
 	if err != nil {
-		return fmt.Errorf("error creating task view: %s", err)
+		return &CheckError{"missing_task_permissions", fmt.Errorf("error creating task view: %s", err)}
 	}
 
 	taskCount := 0
@@ -29,7 +29,7 @@ func CheckTaskPermissions(ctx *CheckContext) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error listing recent tasks: %s", err)
+		return &CheckError{"missing_task_permissions", fmt.Errorf("error listing recent tasks: %s", err)}
 	}
 	klog.V(2).Infof("CheckTaskPermissions: %d tasks found", taskCount)
 	return nil

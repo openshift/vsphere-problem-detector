@@ -22,7 +22,7 @@ func (c *CollectNodeHWVersion) StartCheck() error {
 	return nil
 }
 
-func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
+func (c *CollectNodeHWVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	hwVersion := vm.Config.Version
 	klog.V(2).Infof("Node %s has HW version %s", node.Name, hwVersion)
 	ctx.ClusterInfo.SetHardwareVersion(hwVersion)

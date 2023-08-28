@@ -32,7 +32,7 @@ func (c *CollectNodeCBT) StartCheck() error {
 	return nil
 }
 
-func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
+func (c *CollectNodeCBT) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	klog.V(4).Infof("Checking CBT Property")
 
 	propFound := false

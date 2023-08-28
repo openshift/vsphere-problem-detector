@@ -27,10 +27,10 @@ func (c *CollectNodeESXiVersion) StartCheck() error {
 	return nil
 }
 
-func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
+func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	hostRef := vm.Runtime.Host
 	if hostRef == nil {
-		return fmt.Errorf("error getting ESXi host for node %s: vm.runtime.host is empty", node.Name)
+		return &CheckError{"failed_getting_node", fmt.Errorf("error getting ESXi host for node %s: vm.runtime.host is empty", node.Name)}
 	}
 	hostName := hostRef.Value
 	if ver, processed := ctx.ClusterInfo.MarkHostForProcessing(hostName); processed {
@@ -46,11 +46,11 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 	err := host.Properties(tctx, host.Reference(), []string{"name", "config.product"}, &o)
 	if err != nil {
-		return fmt.Errorf("failed to load ESXi host %s for node %s: %s", hostName, node.Name, err)
+		return &CheckError{"failed_getting_host", fmt.Errorf("failed to load ESXi host %s for node %s: %s", hostName, node.Name, err)}
 	}
 
 	if o.Config == nil {
-		return fmt.Errorf("error getting ESXi host version for node %s: host.config is nil", node.Name)
+		return &CheckError{"failed_getting_host", fmt.Errorf("error getting ESXi host version for node %s: host.config is nil", node.Name)}
 	}
 	version := o.Config.Product.Version
 	apiVersion := o.Config.Product.ApiVersion
