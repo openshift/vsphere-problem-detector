@@ -18,7 +18,7 @@ func CheckTaskPermissions(ctx *CheckContext) *CheckError {
 	mgr := view.NewManager(ctx.VMClient)
 	view, err := mgr.CreateTaskView(tctx, ctx.VMClient.ServiceContent.TaskManager)
 	if err != nil {
-		return &CheckError{"missing_task_permissions", fmt.Errorf("error creating task view: %s", err)}
+		return NewCheckError(MissingTaskPermissions, fmt.Errorf("error creating task view: %s", err))
 	}
 
 	taskCount := 0
@@ -29,7 +29,7 @@ func CheckTaskPermissions(ctx *CheckContext) *CheckError {
 	})
 
 	if err != nil {
-		return &CheckError{"missing_task_permissions", fmt.Errorf("error listing recent tasks: %s", err)}
+		return NewCheckError(MissingTaskPermissions, fmt.Errorf("error listing recent tasks: %s", err))
 	}
 	klog.V(2).Infof("CheckTaskPermissions: %d tasks found", taskCount)
 	return nil

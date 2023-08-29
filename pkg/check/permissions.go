@@ -146,42 +146,42 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 	return nil
 }
 
-func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
+func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) *CheckError {
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
+		return NewCheckError(VcenterNotFound, errors.New("vcenter instance not found in the virtual center map"))
 	}
 
 	matchingDC, err := getDatacenter(ctx, dataCenterName)
 	if err != nil {
 		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return err
+		return NewCheckError(FailedGettingDataCenter, err)
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
-		return fmt.Errorf("missing privileges for datacenter %s: %s", dataCenterName, err.Error())
+		return NewCheckError(MissingPermissionsDataCenter, fmt.Errorf("missing privileges for datacenter %s: %s", dataCenterName, err.Error()))
 	}
 	return nil
 }
 
-func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissionGroup) error {
+func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissionGroup) *CheckError {
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
+		return NewCheckError(VcenterNotFound, errors.New("vcenter instance not found in the virtual center map"))
 	}
 
 	finder := find.NewFinder(ctx.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
 	if err != nil {
 		klog.Errorf("error getting folder %s: %v", folderPath, err)
-		return err
+		return NewCheckError(FailedGettingFolder, err)
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, folder.Reference(), ctx.AuthManager, permissions[group]); err != nil {
-		return fmt.Errorf("missing privileges for %s: %s", group, err.Error())
+		return NewCheckError(MissingFolderPermissions, fmt.Errorf("missing privileges for %s: %s", group, err.Error()))
 	}
 	return nil
 }
 
-func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string, dsRef types.ManagedObjectReference) error {
+func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string, dsRef types.ManagedObjectReference) *CheckError {
 	if err := comparePrivileges(ctx.Context, ctx.Username, dsRef, ctx.AuthManager, permissions[permissionDatastore]); err != nil { //
-		return fmt.Errorf("missing privileges for datastore %s: %s", dataStoreName, err.Error())
+		return NewCheckError(MissingPermissionsDatastore, fmt.Errorf("missing privileges for datastore %s: %s", dataStoreName, err.Error()))
 	}
 	return nil
 }
@@ -197,44 +197,42 @@ func getFolderReference(ctx context.Context, path string, finder *find.Finder) (
 
 // CheckAccountPermissions will attempt to validate that the necessary credentials are held by the account performing the
 // installation. each group of privileges will be checked for missing privileges.
-func CheckAccountPermissions(ctx *CheckContext) error {
-	var errs []error
+func CheckAccountPermissions(ctx *CheckContext) *CheckError {
+
 	matchinDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
-		return err
+		return NewCheckError(FailedGettingDataCenter, err)
 	}
+
+	permissionCheckError := NewEmptyCheckErrorAggregator()
 
 	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, matchinDC)
 	if err != nil {
-		errs = append(errs, err)
+		permissionCheckError.addError(FailedGettingDatastore, err)
 	}
 
 	if ds != nil {
-		err = checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
+		err := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
 		if err != nil {
-			errs = append(errs, err)
+			permissionCheckError.addCheckError(err)
 		}
 	}
 
-	err = checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
+	errCheck := checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
-		errs = append(errs, err)
+		permissionCheckError.addCheckError(errCheck)
 	}
 
-	err = checkFolderPrivileges(ctx, "/", permissionVcenter)
+	errCheck = checkFolderPrivileges(ctx, "/", permissionVcenter)
 	if err != nil {
-		errs = append(errs, err)
+		permissionCheckError.addCheckError(errCheck)
 	}
 
 	if ctx.VMConfig.Workspace.Folder != "" {
-		err = checkFolderPrivileges(ctx, ctx.VMConfig.Workspace.Folder, permissionFolder)
-		if err != nil {
-			errs = append(errs, err)
+		errCheck = checkFolderPrivileges(ctx, ctx.VMConfig.Workspace.Folder, permissionFolder)
+		if errCheck != nil {
+			permissionCheckError.addCheckError(errCheck)
 		}
 	}
-
-	if len(errs) > 0 {
-		return join(errs)
-	}
-	return nil
+	return permissionCheckError.Join()
 }

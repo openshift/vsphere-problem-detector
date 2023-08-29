@@ -18,12 +18,12 @@ import (
 func CheckFolderPermissions(ctx *CheckContext) *CheckError {
 	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
-		return &CheckError{"failed_getting_datacenter", err}
+		return NewCheckError(FailedGettingDataCenter, err)
 	}
 
 	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, dc)
 	if err != nil {
-		return &CheckError{"failed_getting_datastore", fmt.Errorf("failed to access datastore %s: %s", ctx.VMConfig.Workspace.DefaultDatastore, err)}
+		return NewCheckError(FailedGettingDatastore, fmt.Errorf("failed to access datastore %s: %s", ctx.VMConfig.Workspace.DefaultDatastore, err))
 	}
 
 	// OCP needs permissions to list files, try "/" that must exists.
@@ -49,7 +49,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 
 	browser, err := ds.Browser(tctx)
 	if err != nil {
-		return &CheckError{"failed_browsing_datastore", fmt.Errorf("failed to create browser for datastore %s: %s", dsName, err)}
+		return NewCheckError(FailedBrowsingDatastore, fmt.Errorf("failed to create browser for datastore %s: %s", dsName, err))
 	}
 
 	spec := types.HostDatastoreBrowserSearchSpec{
@@ -82,7 +82,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 				dsName)
 			return nil
 		}
-		return &CheckError{"failed_listing_datastore", fmt.Errorf("failed to list datastore %s at path %s: %s ", dsName, path, err)}
+		return NewCheckError(FailedListingDatastore, fmt.Errorf("failed to list datastore %s at path %s: %s ", dsName, path, err))
 	}
 
 	var items []types.HostDatastoreBrowserSearchResults
@@ -92,7 +92,8 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	case types.ArrayOfHostDatastoreBrowserSearchResults:
 		items = r.HostDatastoreBrowserSearchResults
 	default:
-		return &CheckError{"failed_listing_datastore", fmt.Errorf("uknown data received from datastore %s browser: %T", dsName, r)}
+		return NewCheckError(FailedListingDatastore, fmt.Errorf("uknown data received from datastore %s browser: %T", dsName, r))
+
 	}
 
 	// In theory, there should be just one item, but list all to be sure

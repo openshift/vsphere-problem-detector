@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 
@@ -77,21 +76,21 @@ func (d dataStoreTypeCollector) getDataStoreTypeCount() map[string]int {
 }
 
 // CheckStorageClasses tests that datastore name in all StorageClasses in the cluster is short enough.
-func CheckStorageClasses(ctx *CheckContext) error {
+func CheckStorageClasses(ctx *CheckContext) *CheckError {
 	// reset the metric so as if types have changed we don't emit them again
 	dataStoreTypesMetric.Reset()
 
 	infra, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
 	if err != nil {
-		return err
+		return NewCheckError(OpenshiftAPIError, err)
 	}
 
 	scs, err := ctx.KubeClient.ListStorageClasses(ctx.Context)
 	if err != nil {
-		return err
+		return NewCheckError(OpenshiftAPIError, err)
 	}
 
-	var errs []error
+	scCheckError := NewEmptyCheckErrorAggregator()
 	dsTypes := make(dataStoreTypeCollector)
 	for i := range scs {
 		sc := scs[i]
@@ -106,17 +105,17 @@ func CheckStorageClasses(ctx *CheckContext) error {
 			case dsParameter:
 				if err := checkDataStore(ctx, v, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
-					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+					scCheckError.addCheckError(err)
 				}
 			case dataStoreURL:
 				if err := checkDataStoreWithURL(ctx, v, dsTypes); err != nil {
 					klog.V(2).Infof("Checking storageclass %s: %v", sc.Name, err)
-					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+					scCheckError.addCheckError(err)
 				}
 			case storagePolicyParameter:
 				if err := checkStoragePolicy(ctx, v, infra, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
-					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+					scCheckError.addCheckError(err)
 				}
 			default:
 				// There is neither datastore: nor storagepolicyname: in the StorageClass,
@@ -132,8 +131,8 @@ func CheckStorageClasses(ctx *CheckContext) error {
 		dataStoreTypesMetric.WithLabelValues(dsType).Set(float64(count))
 	}
 
-	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(errs))
-	return JoinErrors(errs)
+	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(scCheckError.errorItems))
+	return scCheckError.Join()
 }
 
 // CheckDefaultDatastore checks that the default data store name in vSphere config file is short enough.
@@ -141,27 +140,30 @@ func CheckDefaultDatastore(ctx *CheckContext) *CheckError {
 	return checkDefaultDatastoreWithDSType(ctx, nil)
 }
 
-func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) error {
+func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) *CheckError {
 	dsName := ctx.VMConfig.Workspace.DefaultDatastore
 	if err := checkDataStore(ctx, dsName, dsTypes); err != nil {
-		return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+		klog.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+		return err
 	}
 	return nil
 }
 
 // checkStoragePolicy lists all compatible datastores and checks their names are short.
-func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
+func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) *CheckError {
 	klog.V(4).Infof("Checking storage policy %s", policyName)
 
 	pbm, err := getPolicy(ctx, policyName)
 	if err != nil {
-		return err
+		return NewCheckError(FailedGettingStoragePolicy, err)
 	}
+
 	if len(pbm) == 0 {
-		return fmt.Errorf("error listing storage policy %s: policy not found", policyName)
+		return NewCheckError(StoragePolicyNotFound, fmt.Errorf("error listing storage policy %s: policy not found", policyName))
 	}
+
 	if len(pbm) > 1 {
-		return fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm))
+		return NewCheckError(FailedListingStoragePolicy, fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm)))
 	}
 
 	dataStores, err := getPolicyDatastores(ctx, pbm[0].GetPbmProfile().ProfileId)
@@ -172,14 +174,14 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 	}
 	klog.V(4).Infof("Policy %q is compatible with datastores %v", policyName, dataStores)
 
-	var errs []error
+	policyCheckError := NewEmptyCheckErrorAggregator()
 	for _, dataStore := range dataStores {
 		err := checkDataStore(ctx, dataStore, dsTypes)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
+			policyCheckError.addCheckError(err)
 		}
 	}
-	return JoinErrors(errs)
+	return policyCheckError.Join()
 }
 
 // checkStoragePolicy lists all datastores compatible with given policy.
@@ -285,41 +287,43 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	return profileContent, nil
 }
 
-func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeCollector) error {
+func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeCollector) *CheckError {
 	klog.V(2).Infof("checking datastore %s for permissions", dsName)
-	var errs []error
+
 	dsMo, err := getDataStoreMoByName(ctx, dsName)
 	if err != nil {
-		return err
+		return NewCheckError(FailedGettingDatastore, err)
 	}
+	dataStoreCheckError := NewEmptyCheckErrorAggregator()
 
 	if err := checkForDatastoreCluster(ctx, dsMo, dsName, dsTypes); err != nil {
-		errs = append(errs, err)
+		dataStoreCheckError.addCheckError(err)
 	}
 	if err := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); err != nil {
-		errs = append(errs, err)
+		dataStoreCheckError.addCheckError(err)
 	}
-	return errors.NewAggregate(errs)
+	return dataStoreCheckError.Join()
 }
 
-func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) error {
+func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) *CheckError {
 	klog.V(2).Infof("checking datastore %s for permissions", dsURL)
-	var errs []error
 	dsMo, err := getDatastoreByURL(ctx, dsURL)
 	if err != nil {
-		return err
+		return NewCheckError(FailedGettingDatastore, err)
 	}
+
+	errCheck := NewEmptyCheckErrorAggregator()
 
 	if err := checkForDatastoreCluster(ctx, dsMo, dsURL, dsTypes); err != nil {
-		errs = append(errs, err)
+		errCheck.addCheckError(err)
 	}
 	if err := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); err != nil {
-		errs = append(errs, err)
+		errCheck.addCheckError(err)
 	}
-	return errors.NewAggregate(errs)
+	return errCheck.Join()
 }
 
-func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreName string, dsTypes dataStoreTypeCollector) error {
+func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreName string, dsTypes dataStoreTypeCollector) *CheckError {
 	// Collect DS type
 	dsType := dsMo.Summary.Type
 	klog.V(4).Infof("Datastore %s is of type %s", dataStoreName, dsType)
@@ -327,7 +331,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreNam
 
 	content, err := ctx.Cache.GetStoragePods(ctx.Context)
 	if err != nil {
-		return err
+		return NewCheckError(FailedGettingDatastoreCluster, err)
 	}
 	for _, ds := range content {
 		for _, child := range ds.Folder.ChildEntity {
@@ -339,7 +343,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreNam
 				continue
 			}
 			if tDS.Summary.Url == dsMo.Summary.Url {
-				return fmt.Errorf("datastore %s is part of %s datastore cluster", tDS.Summary.Name, ds.Summary.Name)
+				return NewCheckError(DatastoreClusterInUse, fmt.Errorf("datastore %s is part of %s datastore cluster", tDS.Summary.Name, ds.Summary.Name))
 			}
 		}
 	}

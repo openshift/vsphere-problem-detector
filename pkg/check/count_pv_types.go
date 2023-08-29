@@ -35,10 +35,10 @@ func init() {
 	legacyregistry.MustRegister(zonalPVCountMetric)
 }
 
-func CountPVTypes(ctx *CheckContext) error {
+func CountPVTypes(ctx *CheckContext) *CheckError {
 	rwxPVCount, zonalPVCount, err := countVolumeTypes(ctx)
 	if err != nil {
-		return err
+		return NewCheckError(OpenshiftAPIError, err)
 	}
 
 	rwxPVCountMetric.WithLabelValues().Set(float64(rwxPVCount))
