@@ -8,9 +8,10 @@ const (
 	FailedGettingDataCenter      KnownErrorLabel = "failed_getting_datacenter"
 	MissingPermissionsDataCenter KnownErrorLabel = "missing_permissions_datacenter"
 
-	FailedGettingDatastore      KnownErrorLabel = "failed_getting_datastore"
-	FailedBrowsingDatastore     KnownErrorLabel = "failed_browsing_datastore"
-	FailedListingDatastore      KnownErrorLabel = "failed_listing_datastore"
+	FailedGettingDatastore  KnownErrorLabel = "failed_getting_datastore"
+	FailedBrowsingDatastore KnownErrorLabel = "failed_browsing_datastore"
+	FailedListingDatastore  KnownErrorLabel = "failed_listing_datastore"
+
 	MissingPermissionsDatastore KnownErrorLabel = "missing_permissions_datastore"
 
 	FailedGettingStoragePolicy KnownErrorLabel = "failed_getting_storage_policy"
@@ -39,6 +40,13 @@ const (
 
 	FailedGettingFolder      KnownErrorLabel = "failed_getting_folder"
 	MissingFolderPermissions KnownErrorLabel = "missing_folder_permissions"
+
+	FailedGettingTagsCategories KnownErrorLabel = "failed_getting_categories"
+	MissingTagsCategories       KnownErrorLabel = "missing_tags_categories"
+	MissingZoneRegions          KnownErrorLabel = "missing_zone_regions"
+
+	InvalidComputerClusterPath  KnownErrorLabel = "invalid_compute_cluster_path"
+	FailedGettingComputeCluster KnownErrorLabel = "failed_getting_compute_cluster"
 
 	// Openshift API error labels
 	OpenshiftAPIError KnownErrorLabel = "openshift_api_error"

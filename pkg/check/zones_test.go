@@ -1,7 +1,6 @@
 package check
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
-	"github.com/openshift/api/config/v1"
+	v1 "github.com/openshift/api/config/v1"
 )
 
 const (
@@ -177,68 +176,72 @@ func setupTagAttachmentTest(checkContext CheckContext, finder *find.Finder, atta
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name                string
-		checkZoneTagsMethod func(*CheckContext) error
+		checkZoneTagsMethod func(*CheckContext) *CheckError
 		infrastructure      *v1.Infrastructure
 		tagTestMask         int64
 		expectErr           string
-	}{{
-		name:                "multi-zone validation - No failure domain - No tags",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure: func() *v1.Infrastructure {
-			inf := validInfrastructure()
-			inf.Spec.PlatformSpec.VSphere.FailureDomains = nil
-			return inf
-		}(),
-	}, {
-		name:                "multi-zone validation - VSphere nil - No tags",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure: func() *v1.Infrastructure {
-			inf := validInfrastructure()
-			inf.Spec.PlatformSpec.VSphere = nil
-			return inf
-		}(),
-	}, {
-		name:                "multi-zone validation - No tags",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure:      validInfrastructure(),
-		expectErr:           "Multi-Zone support: tag categories openshift-zone and openshift-region must be created",
-	}, {
-		name:                "multi-zone tag categories present and tags attached",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure:      validInfrastructure(),
-		tagTestMask: tagTestCreateZoneCategory |
-			tagTestCreateRegionCategory |
-			tagTestAttachRegionTags |
-			tagTestAttachZoneTags,
-	}, {
-		name:                "multi-zone tag categories, missing zone tag attachment",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure:      validInfrastructure(),
-		tagTestMask: tagTestCreateZoneCategory |
-			tagTestCreateRegionCategory |
-			tagTestAttachRegionTags,
-		//expectErr: "platform.vsphere.failureDomains.topology.computeCluster: Internal error: tag associated with tag category openshift-zone not attached to this resource or ancestor",
-		expectErr: "Multi-Zone support: ClusterComputeResource DC0_C0 for failure domain test-east-1a: tag associated with tag category openshift-zone not attached to this resource or ancestor",
-	}, {
-		name:                "multi-zone tag categories, missing region tag attachment",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure:      validInfrastructure(),
-		tagTestMask: tagTestCreateZoneCategory |
-			tagTestCreateRegionCategory |
-			tagTestAttachZoneTags,
-		//expectErr: "platform.vsphere.failureDomains.topology.computeCluster: Internal error: tag associated with tag category openshift-zone not attached to this resource or ancestor",
-		expectErr: "Multi-Zone support: ClusterComputeResource DC0_C0 for failure domain test-east-1a: tag associated with tag category openshift-region not attached to this resource or ancestor",
-	}, {
-		name:                "multi-zone tag categories, missing zone and region tag categories",
-		checkZoneTagsMethod: CheckZoneTags,
-		infrastructure:      validInfrastructure(),
-		tagTestMask:         tagTestNothingCreatedOrAttached,
-		expectErr:           "Multi-Zone support: tag categories openshift-zone and openshift-region must be created",
-	},
+	}{
+		{
+			name:                "multi-zone validation - No failure domain - No tags",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure: func() *v1.Infrastructure {
+				inf := validInfrastructure()
+				inf.Spec.PlatformSpec.VSphere.FailureDomains = nil
+				return inf
+			}(),
+		},
+		{
+			name:                "multi-zone validation - VSphere nil - No tags",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure: func() *v1.Infrastructure {
+				inf := validInfrastructure()
+				inf.Spec.PlatformSpec.VSphere = nil
+				return inf
+			}(),
+		}, {
+			name:                "multi-zone validation - No tags",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure:      validInfrastructure(),
+			expectErr:           "tag categories openshift-zone and openshift-region must be created",
+		}, {
+			name:                "multi-zone tag categories present and tags attached",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure:      validInfrastructure(),
+			tagTestMask: tagTestCreateZoneCategory |
+				tagTestCreateRegionCategory |
+				tagTestAttachRegionTags |
+				tagTestAttachZoneTags,
+		}, {
+			name:                "multi-zone tag categories, missing zone tag attachment",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure:      validInfrastructure(),
+			tagTestMask: tagTestCreateZoneCategory |
+				tagTestCreateRegionCategory |
+				tagTestAttachRegionTags,
+			//expectErr: "platform.vsphere.failureDomains.topology.computeCluster: Internal error: tag associated with tag category openshift-zone not attached to this resource or ancestor",
+			expectErr: "tag associated with tag category openshift-zone not attached to this resource or ancestor",
+		}, {
+			name:                "multi-zone tag categories, missing region tag attachment",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure:      validInfrastructure(),
+			tagTestMask: tagTestCreateZoneCategory |
+				tagTestCreateRegionCategory |
+				tagTestAttachZoneTags,
+			//expectErr: "platform.vsphere.failureDomains.topology.computeCluster: Internal error: tag associated with tag category openshift-zone not attached to this resource or ancestor",
+			expectErr: "tag associated with tag category openshift-region not attached to this resource or ancestor",
+		}, {
+			name:                "multi-zone tag categories, missing zone and region tag categories",
+			checkZoneTagsMethod: CheckZoneTags,
+			infrastructure:      validInfrastructure(),
+			tagTestMask:         tagTestNothingCreatedOrAttached,
+			expectErr:           "tag categories openshift-zone and openshift-region must be created",
+		},
 	}
 
-	for _, test := range tests {
+	for _, tc := range tests {
+		test := tc
 		t.Run(test.name, func(t *testing.T) {
+			var errCheck *CheckError
 			var err error
 			if test.checkZoneTagsMethod != nil {
 				fmt.Println("Setting up test...")
@@ -266,7 +269,7 @@ func TestValidate(t *testing.T) {
 						assert.NoError(t, err)
 					}
 				}
-				err = test.checkZoneTagsMethod(checkContext)
+				errCheck = test.checkZoneTagsMethod(checkContext)
 				if test.tagTestMask != 0 {
 					err := teardownTagAttachmentTest(*checkContext)
 					if err != nil {
@@ -274,12 +277,15 @@ func TestValidate(t *testing.T) {
 					}
 				}
 			} else {
-				err = errors.New("no test method defined")
+				errCheck = NewCheckError(OpenshiftAPIError, fmt.Errorf("no test defined"))
 			}
+
 			if test.expectErr == "" {
-				assert.NoError(t, err)
+				if errCheck != nil {
+					t.Errorf("unexpected error here")
+				}
 			} else {
-				assert.Regexp(t, test.expectErr, err)
+				assert.Regexp(t, test.expectErr, errCheck.Error())
 			}
 		})
 	}

@@ -186,7 +186,7 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		}
 	}
 	if hasError {
-		return &CheckError{"failed_disk_latency", errors.New(mcd.errorEventMessage)}
+		return NewCheckError(FailedDiskLatency, errors.New(mcd.errorEventMessage))
 	}
 
 	return nil

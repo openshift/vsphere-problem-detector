@@ -23,7 +23,7 @@ func (c *CheckNodeProviderID) StartCheck() error {
 
 func (c *CheckNodeProviderID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) *CheckError {
 	if node.Spec.ProviderID == "" {
-		return &CheckError{"empty_node_provider_id", fmt.Errorf("the node has no node.spec.providerID configured")}
+		return NewCheckError(EmptyNodeProviderId, fmt.Errorf("the node has no node.spec.providerID configured"))
 	}
 	klog.V(4).Infof("... the node has providerID: %s", node.Spec.ProviderID)
 	return nil

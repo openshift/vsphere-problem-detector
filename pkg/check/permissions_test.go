@@ -316,9 +316,11 @@ func TestPermissionValidate(t *testing.T) {
 
 			err := test.validationMethod(simctx)
 			if test.expectErr == "" {
-				assert.NoError(t, err)
+				if err != nil {
+					t.Errorf("unexpected error: %+v", err)
+				}
 			} else {
-				assert.Regexp(t, test.expectErr, err)
+				assert.Regexp(t, test.expectErr, err.Error())
 			}
 		})
 	}

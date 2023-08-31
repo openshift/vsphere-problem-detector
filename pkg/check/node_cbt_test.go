@@ -186,9 +186,9 @@ func TestVmCbtProperties(t *testing.T) {
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
-				err = check.CheckNode(simctx, node, vm)
-				if err != nil {
-					t.Errorf("Unexpected error on node %s: %s", node.Name, err)
+				errCheck := check.CheckNode(simctx, node, vm)
+				if errCheck != nil {
+					t.Errorf("Unexpected error on node %s: %s", node.Name, errCheck)
 				}
 			}
 

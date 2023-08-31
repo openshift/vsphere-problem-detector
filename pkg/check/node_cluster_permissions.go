@@ -44,11 +44,11 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 	c.computeClusters[cluster.Name] = cluster
 
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return &CheckError{"vcenter_not_found", errors.New("vcenter instance not found in the virtual center map")}
+		return NewCheckError(VcenterNotFound, errors.New("vcenter instance not found in the virtual center map"))
 	}
 
 	if err := comparePrivileges(ctx.Context, ctx.Username, cluster.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
-		return &CheckError{"node_missing_permissions", fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())}
+		return NewCheckError(NodeMissingPermissions, fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error()))
 	}
 	return nil
 }

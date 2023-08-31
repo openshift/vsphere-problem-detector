@@ -38,11 +38,11 @@ func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckCon
 	c.resourcePools[resourcePoolPath] = resourcePool
 
 	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return &CheckError{"vcenter_not_found", errors.New("vcenter instance not found in the virtual center map")}
+		return NewCheckError(VcenterNotFound, errors.New("vcenter instance not found in the virtual center map"))
 	}
 
 	if err := comparePrivileges(ctx.Context, ctx.Username, resourcePool.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
-		return &CheckError{"resource_pool_missing_permissions", fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error())}
+		return NewCheckError(ResourcePoolMissingPermissions, fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error()))
 	}
 
 	return nil
