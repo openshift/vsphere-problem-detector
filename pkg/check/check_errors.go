@@ -50,6 +50,9 @@ const (
 
 	// Openshift API error labels
 	OpenshiftAPIError KnownErrorLabel = "openshift_api_error"
+
+	// we don't actually emit this error in code except for test
+	MiscError KnownErrorLabel = "misc_error"
 )
 
 type ErrorItem struct {

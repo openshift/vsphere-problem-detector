@@ -115,23 +115,24 @@ func buildAuthManagerClient(ctx context.Context, mockCtrl *gomock.Controller, fi
 	return authManagerClient, nil
 }
 
-func clusterLevelPrivilegeCheck(ctx *CheckContext) error {
+func clusterLevelPrivilegeCheck(ctx *CheckContext) *CheckError {
 	return CheckAccountPermissions(ctx)
 }
 
-func vmLevelPrivilegeCheck(ctx *CheckContext) error {
+func vmLevelPrivilegeCheck(ctx *CheckContext) *CheckError {
 	checks := []NodeCheck{&CheckComputeClusterPermissions{}, &CheckResourcePoolPermissions{}}
 	finder := find.NewFinder(ctx.VMClient)
 	virtualMachines, err := finder.VirtualMachineList(ctx.Context, root)
 	if err != nil {
-		return err
+		return NewCheckError(MiscError, err)
 	}
 	if len(virtualMachines) == 0 {
-		return errors.New("no virtual machines found")
+		return NewCheckError(FailedGettingNode, errors.New("no virtual machines found"))
 	}
+
 	hosts, err := finder.HostSystemList(ctx.Context, root)
 	if len(hosts) == 0 {
-		return errors.New("no hosts found")
+		return NewCheckError(FailedGettingHost, errors.New("no hosts found"))
 	}
 
 	var vmToCheck *object.VirtualMachine
@@ -141,30 +142,30 @@ func vmLevelPrivilegeCheck(ctx *CheckContext) error {
 		var hostMo mo.HostSystem
 		err = vm.Properties(ctx.Context, hs.Reference(), hostProperties, &hostMo)
 		if err != nil {
-			return errors.New("error getting host mo reference")
+			return NewCheckError(FailedGettingHost, errors.New("error getting host mo reference"))
 		}
 		if hostMo.Parent.Type == "ClusterComputeResource" {
 			vmToCheck = vm
 		}
 	}
 	if vmToCheck == nil {
-		return errors.New("unable to find virtual machine that is a member of a cluster")
+		return NewCheckError(FailedGettingNode, errors.New("unable to find virtual machine that is a member of a cluster"))
 	}
 	var vmMo mo.VirtualMachine
 	err = vmToCheck.Properties(ctx.Context, vmToCheck.Reference(), NodeProperties, &vmMo)
 	if err != nil {
-		return errors.New("error getting vm mo reference")
+		return NewCheckError(FailedGettingNode, errors.New("error getting vm mo reference"))
 	}
 
 	for _, check := range checks {
 		err = check.StartCheck()
 		if err != nil {
-			return err
+			return NewCheckError(MiscError, err)
 		}
 
 		err = check.CheckNode(ctx, nil, &vmMo)
 		if err != nil {
-			return err
+			return NewCheckError(MiscError, err)
 		}
 	}
 
@@ -247,7 +248,7 @@ func TestPermissionValidate(t *testing.T) {
 	tests := []struct {
 		name                 string
 		expectErr            string
-		validationMethod     func(*CheckContext) error
+		validationMethod     func(*CheckContext) *CheckError
 		authManager          AuthManager
 		existingResourcePool bool // Simulates a cluster installed with pre-existing resource pool
 	}{
