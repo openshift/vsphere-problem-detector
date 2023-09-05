@@ -213,24 +213,24 @@ func CheckAccountPermissions(ctx *CheckContext) *CheckError {
 	if ds != nil {
 		errCheck := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
 		if err != nil {
-			permissionCheckError.addCheckError(errCheck)
+			permissionCheckError.AddCheckError(errCheck)
 		}
 	}
 
 	errCheck := checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if errCheck != nil {
-		permissionCheckError.addCheckError(errCheck)
+		permissionCheckError.AddCheckError(errCheck)
 	}
 
 	errCheck = checkFolderPrivileges(ctx, "/", permissionVcenter)
 	if errCheck != nil {
-		permissionCheckError.addCheckError(errCheck)
+		permissionCheckError.AddCheckError(errCheck)
 	}
 
 	if ctx.VMConfig.Workspace.Folder != "" {
 		errCheck = checkFolderPrivileges(ctx, ctx.VMConfig.Workspace.Folder, permissionFolder)
 		if errCheck != nil {
-			permissionCheckError.addCheckError(errCheck)
+			permissionCheckError.AddCheckError(errCheck)
 		}
 	}
 	return permissionCheckError.Join()

@@ -285,7 +285,7 @@ func TestValidate(t *testing.T) {
 					t.Errorf("unexpected error here")
 				}
 			} else {
-				assert.Regexp(t, test.expectErr, errCheck.Error())
+				assert.Regexp(t, test.expectErr, errCheck.GetErrors().Error())
 			}
 		})
 	}

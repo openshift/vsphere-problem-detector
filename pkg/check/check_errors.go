@@ -110,8 +110,8 @@ func (c *CheckError) GetErrors() error {
 	return errors.NewAggregate(errorList)
 }
 
-// addCheckError merges another CheckError into this CheckError
-func (c *CheckError) addCheckError(e *CheckError) *CheckError {
+// AddCheckError merges another CheckError into this CheckError
+func (c *CheckError) AddCheckError(e *CheckError) *CheckError {
 	if c.ErrorItems == nil {
 		c.ErrorItems = map[KnownErrorLabel]error{}
 	}

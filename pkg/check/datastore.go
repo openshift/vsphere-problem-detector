@@ -105,17 +105,17 @@ func CheckStorageClasses(ctx *CheckContext) *CheckError {
 			case dsParameter:
 				if err := checkDataStore(ctx, v, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
-					scCheckError.addCheckError(err)
+					scCheckError.AddCheckError(err)
 				}
 			case dataStoreURL:
 				if err := checkDataStoreWithURL(ctx, v, dsTypes); err != nil {
 					klog.V(2).Infof("Checking storageclass %s: %v", sc.Name, err)
-					scCheckError.addCheckError(err)
+					scCheckError.AddCheckError(err)
 				}
 			case storagePolicyParameter:
 				if err := checkStoragePolicy(ctx, v, infra, dsTypes); err != nil {
 					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
-					scCheckError.addCheckError(err)
+					scCheckError.AddCheckError(err)
 				}
 			default:
 				// There is neither datastore: nor storagepolicyname: in the StorageClass,
@@ -178,7 +178,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 	for _, dataStore := range dataStores {
 		err := checkDataStore(ctx, dataStore, dsTypes)
 		if err != nil {
-			policyCheckError.addCheckError(err)
+			policyCheckError.AddCheckError(err)
 		}
 	}
 	return policyCheckError.Join()
@@ -297,10 +297,10 @@ func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeColle
 	dataStoreCheckError := NewEmptyCheckErrorAggregator()
 
 	if err := checkForDatastoreCluster(ctx, dsMo, dsName, dsTypes); err != nil {
-		dataStoreCheckError.addCheckError(err)
+		dataStoreCheckError.AddCheckError(err)
 	}
 	if err := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); err != nil {
-		dataStoreCheckError.addCheckError(err)
+		dataStoreCheckError.AddCheckError(err)
 	}
 	return dataStoreCheckError.Join()
 }
@@ -315,10 +315,10 @@ func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTyp
 	errCheck := NewEmptyCheckErrorAggregator()
 
 	if err := checkForDatastoreCluster(ctx, dsMo, dsURL, dsTypes); err != nil {
-		errCheck.addCheckError(err)
+		errCheck.AddCheckError(err)
 	}
 	if err := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); err != nil {
-		errCheck.addCheckError(err)
+		errCheck.AddCheckError(err)
 	}
 	return errCheck.Join()
 }

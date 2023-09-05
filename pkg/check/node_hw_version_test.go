@@ -86,9 +86,9 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
-				err = check.CheckNode(ctx, node, vm)
-				if err != nil {
-					t.Errorf("Unexpected error on node %s: %s", node.Name, err)
+				errCheck := check.CheckNode(ctx, node, vm)
+				if errCheck != nil {
+					t.Errorf("Unexpected error on node %s: %s", node.Name, errCheck)
 				}
 			}
 

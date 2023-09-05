@@ -163,12 +163,11 @@ func vmLevelPrivilegeCheck(ctx *CheckContext) *CheckError {
 			return NewCheckError(MiscError, err)
 		}
 
-		err = check.CheckNode(ctx, nil, &vmMo)
-		if err != nil {
-			return NewCheckError(MiscError, err)
+		errCheck := check.CheckNode(ctx, nil, &vmMo)
+		if errCheck != nil {
+			return errCheck
 		}
 	}
-
 	return nil
 }
 
@@ -321,7 +320,7 @@ func TestPermissionValidate(t *testing.T) {
 					t.Errorf("unexpected error: %+v", err)
 				}
 			} else {
-				assert.Regexp(t, test.expectErr, err.Error())
+				assert.Regexp(t, test.expectErr, err.GetErrors().Error())
 			}
 		})
 	}

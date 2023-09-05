@@ -81,13 +81,13 @@ func TestCheckDefaultDatastore(t *testing.T) {
 
 			ctx.VMConfig.Workspace.DefaultDatastore = test.datastore
 			// Act
-			err = CheckDefaultDatastore(ctx)
+			errCheck := CheckDefaultDatastore(ctx)
 
 			// Assert
-			if err != nil && !test.expectError {
-				t.Errorf("Unexpected error: %s", err)
+			if errCheck != nil && !test.expectError {
+				t.Errorf("Unexpected error: %s", errCheck)
 			}
-			if err == nil && test.expectError {
+			if errCheck == nil && test.expectError {
 				t.Errorf("Expected error, got none")
 			}
 		})
@@ -133,13 +133,14 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 			legacyregistry.Reset()
 
 			// Act
-			err = CheckStorageClasses(ctx)
+			errCheck := CheckStorageClasses(ctx)
 
 			// Assert
-			if err != nil && !test.expectError {
-				t.Errorf("Unexpected error: %s", err)
+			if errCheck != nil && !test.expectError {
+				t.Errorf("Unexpected error: %s", errCheck.GetErrors())
 			}
-			if err == nil && test.expectError {
+
+			if errCheck == nil && test.expectError {
 				t.Errorf("Expected error, got none")
 			}
 			if test.dsType != "" {

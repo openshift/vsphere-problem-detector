@@ -18,10 +18,10 @@ func TestCheckFolderPermissions(t *testing.T) {
 
 	// Act
 	*Timeout = time.Second
-	err = CheckFolderPermissions(ctx)
+	errCheck := CheckFolderPermissions(ctx)
 
 	// Assert
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
+	if errCheck != nil {
+		t.Errorf("Unexpected error: %s", errCheck)
 	}
 }

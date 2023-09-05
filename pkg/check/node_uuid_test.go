@@ -60,13 +60,13 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 			}
 
 			// Act
-			err = check.CheckNode(ctx, kubeClient.nodes[0], vm)
+			errCheck := check.CheckNode(ctx, kubeClient.nodes[0], vm)
 
 			// Assert
-			if err != nil && !test.expectError {
-				t.Errorf("Unexpected error: %s", err)
+			if errCheck != nil && !test.expectError {
+				t.Errorf("Unexpected error: %s", errCheck.GetErrors())
 			}
-			if err == nil && test.expectError {
+			if errCheck == nil && test.expectError {
 				t.Errorf("Expected error, got none")
 			}
 		})

@@ -15,9 +15,9 @@ func TestInfo(t *testing.T) {
 	}
 	defer cleanup()
 
-	err = CollectClusterInfo(ctx)
-	if err != nil {
-		t.Errorf("CollectClusterInfo failed: %s", err)
+	errCheck := CollectClusterInfo(ctx)
+	if errCheck != nil {
+		t.Errorf("CollectClusterInfo failed: %s", errCheck.GetErrors())
 	}
 
 	// UUID & version is hardcoded in the simulator, github.com/vmware/govmomi/simulator/vpx/service_content.go

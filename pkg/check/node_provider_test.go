@@ -43,13 +43,13 @@ func TestCheckNodeProviderID(t *testing.T) {
 			defer cleanup()
 
 			// Act
-			err = check.CheckNode(ctx, test.node, nil)
+			errCheck := check.CheckNode(ctx, test.node, nil)
 
 			// Assert
-			if err != nil && !test.expectError {
-				t.Errorf("Unexpected error: %s", err)
+			if errCheck != nil && !test.expectError {
+				t.Errorf("Unexpected error: %s", errCheck.GetErrors())
 			}
-			if err == nil && test.expectError {
+			if errCheck == nil && test.expectError {
 				t.Errorf("Expected error, got none")
 			}
 		})

@@ -191,7 +191,7 @@ func CheckZoneTags(ctx *CheckContext) *CheckError {
 			// Validate tags for the current ComputeCluster
 			errCheck := validateTagAttachment(ctx, validationCtx)
 			if errCheck != nil {
-				zoneCheckError.addCheckError(errCheck)
+				zoneCheckError.AddCheckError(errCheck)
 				klog.Errorf("Multi-Zone support: ClusterComputeResource %s for failure domain %s: %s", computeClusterName, fd.Name, errCheck)
 			}
 		}
