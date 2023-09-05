@@ -198,7 +198,6 @@ func getFolderReference(ctx context.Context, path string, finder *find.Finder) (
 // CheckAccountPermissions will attempt to validate that the necessary credentials are held by the account performing the
 // installation. each group of privileges will be checked for missing privileges.
 func CheckAccountPermissions(ctx *CheckContext) *CheckError {
-
 	matchinDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
 	if err != nil {
 		return NewCheckError(FailedGettingDataCenter, err)
@@ -212,19 +211,19 @@ func CheckAccountPermissions(ctx *CheckContext) *CheckError {
 	}
 
 	if ds != nil {
-		err := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
+		errCheck := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
 		if err != nil {
-			permissionCheckError.addCheckError(err)
+			permissionCheckError.addCheckError(errCheck)
 		}
 	}
 
 	errCheck := checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
+	if errCheck != nil {
 		permissionCheckError.addCheckError(errCheck)
 	}
 
 	errCheck = checkFolderPrivileges(ctx, "/", permissionVcenter)
-	if err != nil {
+	if errCheck != nil {
 		permissionCheckError.addCheckError(errCheck)
 	}
 

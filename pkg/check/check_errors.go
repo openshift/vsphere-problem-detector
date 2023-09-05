@@ -56,65 +56,67 @@ const (
 )
 
 type ErrorItem struct {
-	errorLabel    KnownErrorLabel
-	errorInstance error
+	ErrorLabel    KnownErrorLabel
+	ErrorInstance error
 }
 
+// CheckError contains one or more errors encountered
+// while performing vSphere specific cluster checks.
+// CheckError intentionally does not implement error interface
+// because doing so results in unintentional errors such as
+// https://go.dev/doc/faq#nil_error
 type CheckError struct {
-	errorItems map[KnownErrorLabel]error
+	ErrorItems map[KnownErrorLabel]error
 }
-
-var _ error = &CheckError{}
 
 func NewEmptyCheckErrorAggregator() *CheckError {
 	return &CheckError{
-		errorItems: map[KnownErrorLabel]error{},
+		ErrorItems: map[KnownErrorLabel]error{},
 	}
 }
 
 func NewCheckError(errorLabel KnownErrorLabel, err error) *CheckError {
 	return &CheckError{
-		errorItems: map[KnownErrorLabel]error{
+		ErrorItems: map[KnownErrorLabel]error{
 			errorLabel: err,
 		},
 	}
 }
 
 func (c *CheckError) addError(errorLabel KnownErrorLabel, err error) *CheckError {
-	if c.errorItems == nil {
-		c.errorItems = map[KnownErrorLabel]error{}
+	if c.ErrorItems == nil {
+		c.ErrorItems = map[KnownErrorLabel]error{}
 	}
-	c.errorItems[errorLabel] = err
+	c.ErrorItems[errorLabel] = err
 	return c
 }
 
 // Join can be used to check if we really had errors when aggregating for errors
 func (c *CheckError) Join() *CheckError {
-	if len(c.errorItems) > 0 {
+	if len(c.ErrorItems) > 0 {
 		return c
 	}
 	return nil
 }
 
-// addCheckError merges another CheckError into this CheckError
-func (c *CheckError) addCheckError(e *CheckError) *CheckError {
-	if c.errorItems == nil {
-		c.errorItems = map[KnownErrorLabel]error{}
+func (c *CheckError) GetErrors() error {
+	if len(c.ErrorItems) == 0 {
+		return nil
 	}
-	for errorLabel, err := range e.errorItems {
-		c.errorItems[errorLabel] = err
+	errorList := []error{}
+	for _, err := range c.ErrorItems {
+		errorList = append(errorList, err)
 	}
-	return c
+	return errors.NewAggregate(errorList)
 }
 
-func (c *CheckError) Error() string {
-	errorList := []error{}
-	for _, e := range c.errorItems {
-		errorList = append(errorList, e)
+// addCheckError merges another CheckError into this CheckError
+func (c *CheckError) addCheckError(e *CheckError) *CheckError {
+	if c.ErrorItems == nil {
+		c.ErrorItems = map[KnownErrorLabel]error{}
 	}
-	if len(errorList) == 1 {
-		return errorList[0].Error()
+	for errorLabel, err := range e.ErrorItems {
+		c.ErrorItems[errorLabel] = err
 	}
-	aggregatedError := errors.NewAggregate(errorList)
-	return aggregatedError.Error()
+	return c
 }

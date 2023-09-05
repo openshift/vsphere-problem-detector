@@ -131,7 +131,7 @@ func CheckStorageClasses(ctx *CheckContext) *CheckError {
 		dataStoreTypesMetric.WithLabelValues(dsType).Set(float64(count))
 	}
 
-	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(scCheckError.errorItems))
+	klog.V(2).Infof("CheckStorageClasses checked %d storage classes, %d problems found", len(scs), len(scCheckError.ErrorItems))
 	return scCheckError.Join()
 }
 

@@ -248,8 +248,9 @@ func runSingleClusterCheck(checkContext *check.CheckContext, name string, checkF
 		Name: name,
 	}
 	klog.V(4).Infof("%s starting", name)
-	err := checkFunc(checkContext)
-	if err != nil {
+	errCheck := checkFunc(checkContext)
+	if errCheck != nil && errCheck.GetErrors() != nil {
+		err := errCheck.GetErrors()
 		res.Error = err
 		clusterCheckErrrorMetric.WithLabelValues(name).Set(1)
 		klog.V(2).Infof("%s failed: %s", name, err)
@@ -269,7 +270,7 @@ func runSingleNodeSingleCheck(checkContext *check.CheckContext, resultCollector 
 	klog.V(4).Infof("%s:%s starting ", name, node.Name)
 	err := check.CheckNode(checkContext, node, vm)
 	if err != nil {
-		res.Error = err
+		res.Error = err.GetErrors()
 		nodeCheckErrrorMetric.WithLabelValues(name, node.Name).Set(1)
 		klog.V(2).Infof("%s:%s failed: %s", name, node.Name, err)
 	} else {
