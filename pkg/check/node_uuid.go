@@ -26,7 +26,7 @@ func (c *CheckNodeDiskUUID) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.V
 		return NewCheckError(EmptyNodeDiskUUID, fmt.Errorf("the node has empty disk.enableUUID"))
 	}
 	if *vm.Config.Flags.DiskUuidEnabled == false {
-		return NewCheckError(FalseNodeDiskUUID, fmt.Errorf("the node has disk.enableUUID = FALSE"))
+		return NewCheckError(EmptyNodeDiskUUID, fmt.Errorf("the node has disk.enableUUID = FALSE"))
 	}
 	klog.V(4).Infof("... the node has correct disk.enableUUID")
 	return nil

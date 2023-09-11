@@ -159,11 +159,11 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 	}
 
 	if len(pbm) == 0 {
-		return NewCheckError(StoragePolicyNotFound, fmt.Errorf("error listing storage policy %s: policy not found", policyName))
+		return NewCheckError(FailedGettingStoragePolicy, fmt.Errorf("error listing storage policy %s: policy not found", policyName))
 	}
 
 	if len(pbm) > 1 {
-		return NewCheckError(FailedListingStoragePolicy, fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm)))
+		return NewCheckError(FailedGettingStoragePolicy, fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm)))
 	}
 
 	dataStores, err := getPolicyDatastores(ctx, pbm[0].GetPbmProfile().ProfileId)

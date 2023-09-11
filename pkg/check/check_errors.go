@@ -8,16 +8,10 @@ const (
 	FailedGettingDataCenter      KnownErrorLabel = "failed_getting_datacenter"
 	MissingPermissionsDataCenter KnownErrorLabel = "missing_permissions_datacenter"
 
-	FailedGettingDatastore  KnownErrorLabel = "failed_getting_datastore"
-	FailedBrowsingDatastore KnownErrorLabel = "failed_browsing_datastore"
-	FailedListingDatastore  KnownErrorLabel = "failed_listing_datastore"
-
+	FailedGettingDatastore      KnownErrorLabel = "failed_getting_datastore"
 	MissingPermissionsDatastore KnownErrorLabel = "missing_permissions_datastore"
 
-	FailedGettingStoragePolicy KnownErrorLabel = "failed_getting_storage_policy"
-	StoragePolicyNotFound      KnownErrorLabel = "storage_policy_not_found"
-	FailedListingStoragePolicy KnownErrorLabel = "failed_listing_storage_policy"
-
+	FailedGettingStoragePolicy    KnownErrorLabel = "failed_getting_storage_policy"
 	FailedGettingDatastoreCluster KnownErrorLabel = "failed_getting_datastore_cluster"
 	DatastoreClusterInUse         KnownErrorLabel = "datastore_cluster_inuse"
 
@@ -32,7 +26,6 @@ const (
 
 	EmptyNodeProviderId KnownErrorLabel = "empty_node_provider_id"
 	EmptyNodeDiskUUID   KnownErrorLabel = "empty_node_disk_uuid"
-	FalseNodeDiskUUID   KnownErrorLabel = "false_node_disk_uuid"
 
 	ResourcePoolMissingPermissions KnownErrorLabel = "resource_pool_missing_permissions"
 

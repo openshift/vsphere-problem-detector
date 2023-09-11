@@ -49,7 +49,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 
 	browser, err := ds.Browser(tctx)
 	if err != nil {
-		return NewCheckError(FailedBrowsingDatastore, fmt.Errorf("failed to create browser for datastore %s: %s", dsName, err))
+		return NewCheckError(MissingPermissionsDatastore, fmt.Errorf("failed to create browser for datastore %s: %s", dsName, err))
 	}
 
 	spec := types.HostDatastoreBrowserSearchSpec{
@@ -82,7 +82,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 				dsName)
 			return nil
 		}
-		return NewCheckError(FailedListingDatastore, fmt.Errorf("failed to list datastore %s at path %s: %s ", dsName, path, err))
+		return NewCheckError(FailedGettingDatastore, fmt.Errorf("failed to list datastore %s at path %s: %s ", dsName, path, err))
 	}
 
 	var items []types.HostDatastoreBrowserSearchResults
@@ -92,7 +92,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	case types.ArrayOfHostDatastoreBrowserSearchResults:
 		items = r.HostDatastoreBrowserSearchResults
 	default:
-		return NewCheckError(FailedListingDatastore, fmt.Errorf("uknown data received from datastore %s browser: %T", dsName, r))
+		return NewCheckError(FailedGettingDatastore, fmt.Errorf("uknown data received from datastore %s browser: %T", dsName, r))
 
 	}
 
