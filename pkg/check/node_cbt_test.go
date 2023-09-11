@@ -160,9 +160,7 @@ func TestVmCbtProperties(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeCBT{
-				lastMetricEmission: map[string]int{},
-			}
+			check := CollectNodeCBT{}
 
 			simctx, cleanup, err := setupSimulator(test.kubeClient, defaultModel)
 			if err != nil {

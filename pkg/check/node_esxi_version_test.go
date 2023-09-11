@@ -40,9 +40,7 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeESXiVersion{
-				lastMetricEmission: map[[2]string]int{},
-			}
+			check := CollectNodeESXiVersion{}
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
 			}

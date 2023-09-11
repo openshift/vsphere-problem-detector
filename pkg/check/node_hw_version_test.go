@@ -52,11 +52,8 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeHWVersion{
-				lastMetricEmission: map[string]int{},
-			}
+			check := CollectNodeHWVersion{}
 			if len(test.initialMetric) > 0 {
-				check.lastMetricEmission = test.initialMetric
 			}
 
 			kubeClient := &fakeKubeClient{

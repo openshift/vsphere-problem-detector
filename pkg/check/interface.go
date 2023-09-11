@@ -13,6 +13,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/legacy-cloud-providers/vsphere"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
@@ -34,18 +35,12 @@ var (
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
 		&CheckNodeProviderID{},
-		&CollectNodeHWVersion{
-			lastMetricEmission: map[string]int{},
-		},
-		&CollectNodeESXiVersion{
-			lastMetricEmission: make(map[[2]string]int),
-		},
+		&CollectNodeHWVersion{},
+		&CollectNodeESXiVersion{},
 		&CheckNodeDiskPerf{},
 		&CheckComputeClusterPermissions{},
 		&CheckResourcePoolPermissions{},
-		&CollectNodeCBT{
-			lastMetricEmission: map[string]int{},
-		},
+		&CollectNodeCBT{},
 	}
 
 	// NodeProperties is a list of properties that NodeCheck can rely on to be pre-filled.
@@ -66,15 +61,16 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
-	Context     context.Context
-	VMConfig    *vsphere.VSphereConfig
-	VMClient    *vim25.Client
-	TagManager  *vapitags.Manager
-	Username    string
-	AuthManager AuthManager
-	KubeClient  KubeClient
-	ClusterInfo *util.ClusterInfo
-	Cache       VSphereCache
+	Context          context.Context
+	VMConfig         *vsphere.VSphereConfig
+	VMClient         *vim25.Client
+	TagManager       *vapitags.Manager
+	Username         string
+	AuthManager      AuthManager
+	KubeClient       KubeClient
+	ClusterInfo      *util.ClusterInfo
+	Cache            VSphereCache
+	MetricsCollector *metrics.Collector
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.
