@@ -212,7 +212,7 @@ func CheckAccountPermissions(ctx *CheckContext) *CheckError {
 
 	if ds != nil {
 		errCheck := checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
-		if err != nil {
+		if errCheck != nil {
 			permissionCheckError.AddCheckError(errCheck)
 		}
 	}
