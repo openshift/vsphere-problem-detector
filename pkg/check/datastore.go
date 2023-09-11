@@ -296,11 +296,11 @@ func checkDataStore(ctx *CheckContext, dsName string, dsTypes dataStoreTypeColle
 	}
 	dataStoreCheckError := NewEmptyCheckErrorAggregator()
 
-	if err := checkForDatastoreCluster(ctx, dsMo, dsName, dsTypes); err != nil {
-		dataStoreCheckError.AddCheckError(err)
+	if errCheck := checkForDatastoreCluster(ctx, dsMo, dsName, dsTypes); errCheck != nil {
+		dataStoreCheckError.AddCheckError(errCheck)
 	}
-	if err := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); err != nil {
-		dataStoreCheckError.AddCheckError(err)
+	if errCheck := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); errCheck != nil {
+		dataStoreCheckError.AddCheckError(errCheck)
 	}
 	return dataStoreCheckError.Join()
 }
@@ -314,11 +314,11 @@ func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTyp
 
 	errCheck := NewEmptyCheckErrorAggregator()
 
-	if err := checkForDatastoreCluster(ctx, dsMo, dsURL, dsTypes); err != nil {
-		errCheck.AddCheckError(err)
+	if datastoreCheckErr := checkForDatastoreCluster(ctx, dsMo, dsURL, dsTypes); datastoreCheckErr != nil {
+		errCheck.AddCheckError(datastoreCheckErr)
 	}
-	if err := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); err != nil {
-		errCheck.AddCheckError(err)
+	if datastorePrivCheck := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); datastorePrivCheck != nil {
+		errCheck.AddCheckError(datastorePrivCheck)
 	}
 	return errCheck.Join()
 }

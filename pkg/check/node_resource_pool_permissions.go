@@ -55,9 +55,9 @@ func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Nod
 		return nil
 	}
 
-	err := c.checkResourcePoolPrivileges(ctx, vm)
-	if err != nil {
-		return err
+	errCheck := c.checkResourcePoolPrivileges(ctx, vm)
+	if errCheck != nil {
+		return errCheck
 	}
 	return nil
 }

@@ -145,9 +145,9 @@ func CheckZoneTags(ctx *CheckContext) *CheckError {
 
 	if len(fds) > 1 {
 		// Validate tags exist for cluster
-		regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx)
-		if err != nil {
-			return err
+		regionTagCategoryId, zoneTagCategoryId, errCheck := validateTagCategories(ctx)
+		if errCheck != nil {
+			return errCheck
 		}
 
 		klog.V(4).Infof("Region: %s  Zone: %s", regionTagCategoryId, zoneTagCategoryId)
