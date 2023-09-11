@@ -4,8 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"k8s.io/component-base/metrics/legacyregistry"
+	basemetrics "k8s.io/component-base/metrics"
 )
 
 func TestCollectNodeHWVersion(t *testing.T) {
@@ -13,7 +14,6 @@ func TestCollectNodeHWVersion(t *testing.T) {
 		name            string
 		hwVersions      []string
 		expectedMetrics string
-		initialMetric   map[string]int
 	}{
 		{
 			name: "hw ver 13",
@@ -40,12 +40,8 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 1
 			expectedMetrics: `
 # HELP vsphere_node_hw_version_total [ALPHA] Number of vSphere nodes with given HW version.
 # TYPE vsphere_node_hw_version_total gauge
-vsphere_node_hw_version_total{hw_version="vmx-13"} 0
 vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 `,
-			initialMetric: map[string]int{
-				"vmx-13": 2,
-			},
 		},
 	}
 
@@ -53,8 +49,6 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			check := CollectNodeHWVersion{}
-			if len(test.initialMetric) > 0 {
-			}
 
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
@@ -64,6 +58,9 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
+
+			collector := metrics.NewMetricsCollector()
+			ctx.MetricsCollector = collector
 
 			// Set HW version of the first VM. Leave the other VMs with the default version (vmx-13).
 			if len(test.hwVersions) > 0 {
@@ -75,9 +72,8 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 					}
 				}
 			}
-
-			// Reset metrics from previous tests. Note: the tests can't run in parallel!
-			legacyregistry.Reset()
+			customRegistry := basemetrics.NewKubeRegistry()
+			customRegistry.CustomMustRegister(collector)
 
 			// Act - simulate loop through all nodes
 			err = check.StartCheck()
@@ -99,7 +95,7 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 			check.FinishCheck(ctx)
 
 			// Assert
-			if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(test.expectedMetrics), "vsphere_node_hw_version_total"); err != nil {
+			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_node_hw_version_total"); err != nil {
 				t.Errorf("Unexpected metric: %s", err)
 			}
 		})

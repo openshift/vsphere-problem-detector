@@ -74,5 +74,4 @@ func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 		m := metrics.NewLazyConstMetric(lmetric.EsxiVersionMetric, metrics.GaugeValue, float64(count), v.Version, v.APIVersion)
 		ctx.MetricsCollector.AddMetric(m)
 	}
-	return
 }

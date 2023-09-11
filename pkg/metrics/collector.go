@@ -1,11 +1,14 @@
 package metrics
 
 import (
+	"sync"
+
 	"k8s.io/component-base/metrics"
 )
 
 type Collector struct {
 	metrics.BaseStableCollector
+	lock sync.RWMutex
 
 	storedMetrics []metrics.Metric
 }
@@ -59,15 +62,24 @@ func (c *Collector) DescribeWithStability(ch chan<- *metrics.Desc) {
 }
 
 func (c *Collector) CollectWithStability(ch chan<- metrics.Metric) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
 	for _, m := range c.storedMetrics {
 		ch <- m
 	}
 }
 
 func (c *Collector) AddMetric(m metrics.Metric) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.storedMetrics = append(c.storedMetrics, m)
 }
 
 func (c *Collector) ClearStoredMetric() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.storedMetrics = []metrics.Metric{}
 }

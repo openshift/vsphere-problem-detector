@@ -5,7 +5,6 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
-	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 )
 
@@ -14,25 +13,6 @@ type CollectNodeHWVersion struct {
 }
 
 var _ NodeCheck = &CollectNodeHWVersion{}
-
-const (
-	hwVersionLabel = "hw_version"
-)
-
-var (
-	hwVersionMetric = metrics.NewGaugeVec(
-		&metrics.GaugeOpts{
-			Name:           "vsphere_node_hw_version_total",
-			Help:           "Number of vSphere nodes with given HW version.",
-			StabilityLevel: metrics.ALPHA,
-		},
-		[]string{hwVersionLabel},
-	)
-)
-
-func init() {
-	legacyregistry.MustRegister(hwVersionMetric)
-}
 
 func (c *CollectNodeHWVersion) Name() string {
 	return "CollectNodeHWVersion"
@@ -56,5 +36,4 @@ func (c *CollectNodeHWVersion) FinishCheck(ctx *CheckContext) {
 		m := metrics.NewLazyConstMetric(lmetric.HwVersionMetric, metrics.GaugeValue, float64(count), hwVersion)
 		ctx.MetricsCollector.AddMetric(m)
 	}
-	return
 }

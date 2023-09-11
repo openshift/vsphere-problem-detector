@@ -11,7 +11,6 @@ import (
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
-	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
@@ -22,7 +21,6 @@ import (
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
 )
@@ -33,20 +31,17 @@ type vSphereCheckerInterface interface {
 
 type vSphereChecker struct {
 	controller *vSphereProblemDetectorController
-	collector  *metrics.Collector
 }
 
 var _ vSphereCheckerInterface = &vSphereChecker{}
 
 func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterface {
-	collector := metrics.NewMetricsCollector()
-	legacyregistry.CustomMustRegister(collector)
-	return &vSphereChecker{controller: c, collector: collector}
+	return &vSphereChecker{controller: c}
 }
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
 
-	v.collector.ClearStoredMetric()
+	v.controller.metricsCollector.ClearStoredMetric()
 
 	resultCollector := NewResultsCollector()
 	vmConfig, vmClient, restClient, err := v.connect(ctx)
@@ -80,7 +75,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		ClusterInfo: clusterInfo,
 		// Each check run gets its own cache
 		Cache:            check.NewCheckCache(vmClient.Client),
-		MetricsCollector: v.collector,
+		MetricsCollector: v.controller.metricsCollector,
 	}
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)

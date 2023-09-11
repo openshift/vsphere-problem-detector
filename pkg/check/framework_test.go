@@ -14,6 +14,7 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/simulator"
+
 	// required to initialize the REST endpoint.
 	_ "github.com/vmware/govmomi/vapi/rest"
 	// required to initialize the VAPI endpoint.
