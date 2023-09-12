@@ -87,9 +87,12 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
+		klog.Errorf("error waiting for metrics checks to finish: %v", err)
 		return resultCollector, err
 	}
 	v.finishNodeChecks(checkContext)
+	klog.Infof("Finished running all vSphere specific checks in the cluster")
+	v.controller.metricsCollector.FinishedAllChecks()
 	return resultCollector, nil
 }
 
