@@ -16,9 +16,9 @@ func TestCollector(t *testing.T) {
 		expectedMetrics  string
 	}{
 		{
-			name: "should report stale metric when metrics are marked stale",
+			name: "should report old metrics when checks are still running",
 			collectorModFunc: func(c *Collector) *Collector {
-				c.ClearStoredMetric()
+				c.StartMetricCollection()
 				return c
 			},
 			emittedMetric: func() metrics.Metric {
@@ -33,8 +33,8 @@ func TestCollector(t *testing.T) {
 		{
 			name: "marking metrics stale twice should still result in metrics being reported",
 			collectorModFunc: func(c *Collector) *Collector {
-				c.ClearStoredMetric()
-				c.ClearStoredMetric()
+				c.StartMetricCollection()
+				c.StartMetricCollection()
 				return c
 			},
 			emittedMetric: func() metrics.Metric {
@@ -49,7 +49,7 @@ func TestCollector(t *testing.T) {
 		{
 			name: "finishing all checks should result in fresh metrics",
 			collectorModFunc: func(c *Collector) *Collector {
-				c.ClearStoredMetric()
+				c.StartMetricCollection()
 				m := metrics.NewLazyConstMetric(EsxiVersionMetric, metrics.GaugeValue, float64(10), "8.0", "8.0.2")
 				c.AddMetric(m)
 				c.FinishedAllChecks()
@@ -83,6 +83,8 @@ func TestCollector(t *testing.T) {
 				}
 			}()
 			collector.AddMetric(test.emittedMetric())
+			collector.FinishedAllChecks()
+
 			collector = test.collectorModFunc(collector)
 
 			collector.CollectWithStability(ch)

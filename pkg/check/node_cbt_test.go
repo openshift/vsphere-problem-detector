@@ -193,6 +193,7 @@ func TestVmCbtProperties(t *testing.T) {
 			}
 
 			check.FinishCheck(simctx)
+			collector.FinishedAllChecks()
 
 			// Verify metrics
 			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_vm_cbt_checks"); err != nil {

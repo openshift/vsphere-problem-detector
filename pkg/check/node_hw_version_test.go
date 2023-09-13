@@ -93,6 +93,7 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 			}
 
 			check.FinishCheck(ctx)
+			collector.FinishedAllChecks()
 
 			// Assert
 			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_node_hw_version_total"); err != nil {

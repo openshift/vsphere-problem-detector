@@ -41,7 +41,7 @@ func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterf
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
 
-	v.controller.metricsCollector.ClearStoredMetric()
+	v.controller.metricsCollector.StartMetricCollection()
 
 	resultCollector := NewResultsCollector()
 	vmConfig, vmClient, restClient, err := v.connect(ctx)
@@ -82,12 +82,14 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 
 	v.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := v.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
 		klog.Errorf("error waiting for metrics checks to finish: %v", err)
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 	v.finishNodeChecks(checkContext)

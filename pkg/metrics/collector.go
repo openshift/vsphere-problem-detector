@@ -10,9 +10,9 @@ type Collector struct {
 	metrics.BaseStableCollector
 	lock sync.RWMutex
 
-	storedMetrics    []metrics.Metric
-	staleMetrics     []metrics.Metric
-	markStaleMetrics bool
+	currentMetrics    []metrics.Metric
+	inProgressMetrics []metrics.Metric
+	markStaleMetrics  bool
 }
 
 var _ metrics.StableCollector = &Collector{}
@@ -53,9 +53,8 @@ var (
 
 func NewMetricsCollector() *Collector {
 	return &Collector{
-		storedMetrics:    []metrics.Metric{},
-		staleMetrics:     []metrics.Metric{},
-		markStaleMetrics: false,
+		currentMetrics:    []metrics.Metric{},
+		inProgressMetrics: []metrics.Metric{},
 	}
 }
 
@@ -69,14 +68,8 @@ func (c *Collector) CollectWithStability(ch chan<- metrics.Metric) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	if c.markStaleMetrics {
-		for _, m := range c.staleMetrics {
-			ch <- m
-		}
-	} else {
-		for _, m := range c.storedMetrics {
-			ch <- m
-		}
+	for _, m := range c.currentMetrics {
+		ch <- m
 	}
 }
 
@@ -84,28 +77,21 @@ func (c *Collector) AddMetric(m metrics.Metric) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.storedMetrics = append(c.storedMetrics, m)
+	c.inProgressMetrics = append(c.inProgressMetrics, m)
 }
 
-func (c *Collector) ClearStoredMetric() {
+func (c *Collector) StartMetricCollection() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// if last check did not finish, we should keep reporting stale metrics rather than risk
-	// clearing them out
-	if !c.markStaleMetrics {
-		c.markStaleMetrics = true
-		c.staleMetrics = c.storedMetrics
-	}
-	c.storedMetrics = []metrics.Metric{}
+	c.inProgressMetrics = []metrics.Metric{}
 }
 
-// FinishedAllChecks updates staleMetrics with storedMetrics so as
+// FinishedAllChecks updates currentMetrics with inProgressMetrics so as
 // both slices point to same values
 func (c *Collector) FinishedAllChecks() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.staleMetrics = c.storedMetrics
-	c.markStaleMetrics = false
+	c.currentMetrics = c.inProgressMetrics
 }

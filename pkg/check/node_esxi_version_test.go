@@ -82,6 +82,7 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			}
 
 			check.FinishCheck(ctx)
+			collector.FinishedAllChecks()
 
 			// Assert
 			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_esxi_version_total"); err != nil {
