@@ -71,7 +71,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 	version := o.Config.Product.Version
 	apiVersion := o.Config.Product.ApiVersion
 	realHostName := o.Name // "10.0.0.2" or other user-friendly name of the host.
-	klog.V(2).Infof("Node %s runs on host %s (%s) with ESXi version: %s", node.Name, hostName, realHostName, version)
+	klog.V(2).Infof("Nodes %s runs on host %s (%s) with ESXi version: %s", node.Name, hostName, realHostName, version)
 	ctx.ClusterInfo.SetHostVersion(hostName, version, apiVersion)
 
 	return nil
