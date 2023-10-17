@@ -3,10 +3,11 @@ package operator
 import (
 	"context"
 	"fmt"
-	"github.com/vmware/govmomi/vapi/rest"
-	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"net/url"
 	"strings"
+
+	"github.com/vmware/govmomi/vapi/rest"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
@@ -39,6 +40,9 @@ func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterf
 }
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
+
+	v.controller.metricsCollector.StartMetricCollection()
+
 	resultCollector := NewResultsCollector()
 	vmConfig, vmClient, restClient, err := v.connect(ctx)
 	if err != nil {
@@ -70,21 +74,27 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		KubeClient:  v.controller,
 		ClusterInfo: clusterInfo,
 		// Each check run gets its own cache
-		Cache: check.NewCheckCache(vmClient.Client),
+		Cache:            check.NewCheckCache(vmClient.Client),
+		MetricsCollector: v.controller.metricsCollector,
 	}
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 
 	v.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := v.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
+		klog.Errorf("error waiting for metrics checks to finish: %v", err)
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 	v.finishNodeChecks(checkContext)
+	klog.Infof("Finished running all vSphere specific checks in the cluster")
+	v.controller.metricsCollector.FinishedAllChecks()
 	return resultCollector, nil
 }
 

@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/component-base/metrics/legacyregistry"
+	basemetrics "k8s.io/component-base/metrics"
 )
 
 var (
@@ -160,18 +161,18 @@ func TestVmCbtProperties(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeCBT{
-				lastMetricEmission: map[string]int{},
-			}
+			check := CollectNodeCBT{}
 
 			simctx, cleanup, err := setupSimulator(test.kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
+			collector := metrics.NewMetricsCollector()
+			simctx.MetricsCollector = collector
 
-			// Reset metrics from previous tests. Note: the tests can't run in parallel!
-			legacyregistry.Reset()
+			customRegistry := basemetrics.NewKubeRegistry()
+			customRegistry.CustomMustRegister(collector)
 
 			// Act - simulate loop through all nodes
 			err = check.StartCheck()
@@ -192,9 +193,10 @@ func TestVmCbtProperties(t *testing.T) {
 			}
 
 			check.FinishCheck(simctx)
+			collector.FinishedAllChecks()
 
 			// Verify metrics
-			if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(test.expectedMetrics), "vsphere_vm_cbt_checks"); err != nil {
+			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_vm_cbt_checks"); err != nil {
 				t.Errorf("Unexpected metric: %s", err)
 			}
 		})
