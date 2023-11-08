@@ -9,19 +9,19 @@ require (
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
-	github.com/openshift/api v0.0.0-20230509100629-894b49f57a15
+	github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
 	github.com/openshift/client-go v0.0.0-20230503144108-75015d2347cb
-	github.com/openshift/library-go v0.0.0-20230508110756-9b7abe2c9cbf
+	github.com/openshift/library-go v0.0.0-20231103161458-0ec67489d123
 	github.com/prometheus/client_golang v1.14.0
-	github.com/spf13/cobra v1.6.0
+	github.com/spf13/cobra v1.6.1
 	github.com/vmware/govmomi v0.30.0
 	golang.org/x/net v0.17.0 // indirect
 	gopkg.in/gcfg.v1 v1.2.3
-	k8s.io/api v0.27.1
-	k8s.io/apimachinery v0.27.1
-	k8s.io/client-go v0.27.1
-	k8s.io/component-base v0.27.1
+	k8s.io/api v0.27.4
+	k8s.io/apimachinery v0.27.4
+	k8s.io/client-go v0.27.4
+	k8s.io/component-base v0.27.4
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/legacy-cloud-providers v0.27.1
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106 // indirect
@@ -113,12 +113,12 @@ require (
 	gopkg.in/warnings.v0 v0.1.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiserver v0.27.1 // indirect
+	k8s.io/apiserver v0.27.4 // indirect
 	k8s.io/cloud-provider v0.27.1 // indirect
 	k8s.io/component-helpers v0.27.1 // indirect
-	k8s.io/kms v0.27.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20230308215209-15aac26d736a // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.1 // indirect
+	k8s.io/kms v0.27.4 // indirect
+	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
