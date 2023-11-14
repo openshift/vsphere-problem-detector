@@ -163,7 +163,7 @@ func TestVmCbtProperties(t *testing.T) {
 			// Stage
 			check := CollectNodeCBT{}
 
-			simctx, cleanup, err := setupSimulator(test.kubeClient, defaultModel)
+			simctx, cleanup, err := SetupSimulator(test.kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

@@ -1,4 +1,4 @@
-package check
+package cache
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestCacheGetDatacenter(t *testing.T) {
-	ctx, cleanup, err := setupSimulator(nil, defaultModel)
+	ctx, cleanup, err := check.SetupSimulator(nil, defaultModel)
 	if err != nil {
 		t.Fatalf("Failed to setup vSphere simulator: %s", err)
 	}

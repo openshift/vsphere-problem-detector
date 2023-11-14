@@ -1,4 +1,4 @@
-package check
+package testlib
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
+	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -83,7 +85,7 @@ datacenters = "DC0"
 	return &cfg
 }
 
-func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckContext, cleanup func(), err error) {
+func SetupSimulator(kubeClient *FakeKubeClient, modelDir string) (ctx *check.CheckContext, cleanup func(), err error) {
 	model := simulator.Model{}
 	err = model.Load(modelDir)
 	if err != nil {
@@ -105,14 +107,14 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 	restClient := rest.NewClient(client)
 	restClient.Login(context.TODO(), s.URL.User)
 
-	ctx = &CheckContext{
+	ctx = &check.CheckContext{
 		Context:     context.TODO(),
 		VMConfig:    simulatorConfig(),
 		VMClient:    client,
 		KubeClient:  kubeClient,
 		TagManager:  vapitags.NewManager(restClient),
 		ClusterInfo: clusterInfo,
-		Cache:       NewCheckCache(client),
+		Cache:       cache.NewCheckCache(client),
 	}
 
 	ctx.Username = userSession.UserName
@@ -126,28 +128,28 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 	return ctx, cleanup, nil
 }
 
-type fakeKubeClient struct {
+type FakeKubeClient struct {
 	infrastructure *ocpv1.Infrastructure
 	nodes          []*v1.Node
 	storageClasses []*storagev1.StorageClass
 	pvs            []*v1.PersistentVolume
 }
 
-var _ KubeClient = &fakeKubeClient{}
+var _ KubeClient = &FakeKubeClient{}
 
-func (f *fakeKubeClient) GetInfrastructure(ctx context.Context) (*ocpv1.Infrastructure, error) {
+func (f *FakeKubeClient) GetInfrastructure(ctx context.Context) (*ocpv1.Infrastructure, error) {
 	return f.infrastructure, nil
 }
 
-func (f *fakeKubeClient) ListNodes(ctx context.Context) ([]*v1.Node, error) {
+func (f *FakeKubeClient) ListNodes(ctx context.Context) ([]*v1.Node, error) {
 	return f.nodes, nil
 }
 
-func (f *fakeKubeClient) ListStorageClasses(ctx context.Context) ([]*storagev1.StorageClass, error) {
+func (f *FakeKubeClient) ListStorageClasses(ctx context.Context) ([]*storagev1.StorageClass, error) {
 	return f.storageClasses, nil
 }
 
-func (f *fakeKubeClient) ListPVs(ctx context.Context) ([]*v1.PersistentVolume, error) {
+func (f *FakeKubeClient) ListPVs(ctx context.Context) ([]*v1.PersistentVolume, error) {
 	return f.pvs, nil
 }
 
@@ -197,7 +199,7 @@ func infrastructure(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastruct
 	return infra
 }
 
-func getVM(ctx *CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
+func getVM(ctx *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
 	finder := find.NewFinder(ctx.VMClient, true)
 	vm, err := finder.VirtualMachine(ctx.Context, defaultVMPath+node.Name)
 	if err != nil {
@@ -213,7 +215,7 @@ func getVM(ctx *CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
 	return &o, nil
 }
 
-func customizeVM(ctx *CheckContext, node *v1.Node, spec *types.VirtualMachineConfigSpec) error {
+func customizeVM(ctx *check.CheckContext, node *v1.Node, spec *types.VirtualMachineConfigSpec) error {
 	finder := find.NewFinder(ctx.VMClient, true)
 	vm, err := finder.VirtualMachine(ctx.Context, defaultVMPath+node.Name)
 	if err != nil {
@@ -229,7 +231,7 @@ func customizeVM(ctx *CheckContext, node *v1.Node, spec *types.VirtualMachineCon
 	return err
 }
 
-func setHardwareVersion(ctx *CheckContext, node *v1.Node, hardwareVersion string) error {
+func setHardwareVersion(ctx *check.CheckContext, node *v1.Node, hardwareVersion string) error {
 	err := customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
 		ExtraConfig: []types.BaseOptionValue{
 			&types.OptionValue{

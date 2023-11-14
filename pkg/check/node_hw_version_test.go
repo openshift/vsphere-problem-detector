@@ -53,7 +53,7 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

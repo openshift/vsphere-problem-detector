@@ -36,7 +36,7 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 			kubeClient := &fakeKubeClient{
 				nodes: defaultNodes(),
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

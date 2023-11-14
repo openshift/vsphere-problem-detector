@@ -9,7 +9,7 @@ import (
 )
 
 func TestInfo(t *testing.T) {
-	ctx, cleanup, err := setupSimulator(nil, defaultModel)
+	ctx, cleanup, err := SetupSimulator(nil, defaultModel)
 	if err != nil {
 		t.Fatalf("Failed to setup vSphere simulator: %s", err)
 	}

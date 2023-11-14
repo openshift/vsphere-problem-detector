@@ -67,7 +67,7 @@ func TestCheckDefaultDatastore(t *testing.T) {
 				infrastructure: infrastructure(),
 				nodes:          defaultNodes(),
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
@@ -101,7 +101,7 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 	for _, test := range datastoreTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			kubeClient := &fakeKubeClient{
+			kubeClient := &testlib.FakeKubeClient{
 				infrastructure: infrastructure(),
 				nodes:          defaultNodes(),
 				storageClasses: []*storagev1.StorageClass{
@@ -117,7 +117,7 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 					},
 				},
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

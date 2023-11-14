@@ -36,7 +36,7 @@ func TestCheckNodeProviderID(t *testing.T) {
 			kubeClient := &fakeKubeClient{
 				nodes: []*v1.Node{test.node},
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

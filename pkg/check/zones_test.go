@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
-	"github.com/openshift/api/config/v1"
+	v1 "github.com/openshift/api/config/v1"
 )
 
 const (
@@ -250,7 +250,7 @@ func TestValidate(t *testing.T) {
 
 				var checkContext *CheckContext
 				var cleanup func()
-				checkContext, cleanup, err = setupSimulator(kubeClient, defaultModel)
+				checkContext, cleanup, err = SetupSimulator(kubeClient, defaultModel)
 				if err != nil {
 					t.Fatalf("setupSimulator failed: %s", err)
 				}

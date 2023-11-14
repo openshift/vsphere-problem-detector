@@ -20,15 +20,11 @@ import (
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
 
 	vsphereconfig "k8s.io/cloud-provider-vsphere/pkg/common/config"
-
-	ocpv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/vsphere-problem-detector/pkg/check"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
-	"github.com/openshift/vsphere-problem-detector/pkg/version"
 )
 
 type vSphereCheckerInterface interface {
@@ -70,20 +66,6 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	}
 
 	authManager := object.NewAuthorizationManager(checkContext.VMClient)
-
-	checkContext := &check.CheckContext{
-		Context:     ctx,
-		AuthManager: authManager,
-		VMConfig:    vmConfig,
-		VMClient:    vmClient.Client,
-		TagManager:  vapitags.NewManager(restClient),
-		Username:    user.UserName,
-		KubeClient:  v.controller,
-		ClusterInfo: clusterInfo,
-		// Each check run gets its own cache
-		Cache:            check.NewCheckCache(vmClient.Client),
-		MetricsCollector: v.controller.metricsCollector,
-	}
 	infra, err := v.controller.GetInfrastructure(ctx)
 	if err != nil {
 		return nil, err
@@ -93,6 +75,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	checkContext.Username = user.UserName
 	checkContext.KubeClient = v.controller
 	checkContext.ClusterInfo = clusterInfo
+	checkContext.MetricsCollector = v.controller.metricsCollector
 
 	convertToPlatformSpec(infra, checkContext)
 
@@ -178,9 +161,6 @@ func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1
 }
 
 func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, error) {
-
-	// todo: jcallen: blow this up...
-
 	// use api infra as the basis of
 	// variables instead of intree
 	// external won't have these values...
@@ -237,16 +217,16 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 	}
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-
 	checkContext := &check.CheckContext{
 		Context:          ctx,
-		VMConfig:         cfg,
 		ExternalVMConfig: externalCfg,
-		GovmomiClient:    vmClient,
+		VMConfig:         cfg,
 		VMClient:         vmClient.Client,
+		GovmomiClient:    vmClient,
 		TagManager:       vapitags.NewManager(restClient),
+		// Each check run gets its own cache
+		Cache: cache.NewCheckCache(vmClient.Client),
 	}
-
 	return checkContext, nil
 }
 
@@ -394,12 +374,11 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
 	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
 	defer cancel()
+
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
 
 	// Find VM reference in the datastore, by UUID
 	s := object.NewSearchIndex(checkContext.VMClient)
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
-	defer cancel()
 
 	// datacenter can be nil...
 	svm, err := s.FindByUuid(tctx, nil, vmUUID, true, nil)
@@ -409,8 +388,7 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 
 	// Find VM properties
 	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
-	defer cancel()
+
 	var o mo.VirtualMachine
 	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
 	if err != nil {

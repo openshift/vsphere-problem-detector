@@ -181,7 +181,7 @@ func TestPermissionValidate(t *testing.T) {
 		nodes:          defaultNodes(),
 	}
 
-	simctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+	simctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
 	if err != nil {
 		t.Fatalf("setupSimulator failed: %s", err)
 	}
