@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,11 +64,13 @@ func TestCheckDefaultDatastore(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			dataStoreTypesMetric.Reset()
-			kubeClient := &fakeKubeClient{
-				infrastructure: infrastructure(),
-				nodes:          defaultNodes(),
+			kubeClient := &testlib.FakeKubeClient{
+				Infrastructure: testlib.Infrastructure(),
+				Nodes:          testlib.DefaultNodes(),
 			}
-			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
+			ctx.PlatformSpec.FailureDomains[0].Topology.Datastore = test.datastore
+
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
@@ -79,7 +82,6 @@ func TestCheckDefaultDatastore(t *testing.T) {
 			}
 			ctx.AuthManager = authManager
 
-			ctx.VMConfig.Workspace.DefaultDatastore = test.datastore
 			// Act
 			err = CheckDefaultDatastore(ctx)
 
@@ -102,9 +104,9 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			kubeClient := &testlib.FakeKubeClient{
-				infrastructure: infrastructure(),
-				nodes:          defaultNodes(),
-				storageClasses: []*storagev1.StorageClass{
+				Infrastructure: testlib.Infrastructure(),
+				Nodes:          testlib.DefaultNodes(),
+				StorageClasses: []*storagev1.StorageClass{
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: test.name,
@@ -117,7 +119,7 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 					},
 				},
 			}
-			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

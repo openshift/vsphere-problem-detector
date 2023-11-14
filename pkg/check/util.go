@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
@@ -12,6 +15,7 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+	"k8s.io/legacy-cloud-providers/vsphere"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
@@ -39,7 +43,7 @@ func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.C
 	var computeClusterMo mo.ClusterComputeResource
 	pc := property.DefaultCollector(ctx.VMClient)
 	properties := []string{"summary", "parent"}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	err := pc.RetrieveOne(tctx, ref, properties, &hostSystemMo)
@@ -65,7 +69,7 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 	var resourcePoolMo mo.ResourcePool
 	pc := property.DefaultCollector(ctx.VMClient)
 	properties := []string{"resourcePool"}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	err := pc.RetrieveOne(tctx, ref, properties, &vmMo)
@@ -93,7 +97,7 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 // getClusterComputeResource returns the ComputeResource that matches the provided name.
 func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacenter *object.Datacenter) (*object.ClusterComputeResource, error) {
 	klog.V(4).Infof("Looking for CC: %s", computeCluster)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	finder := find.NewFinder(ctx.VMClient)
@@ -107,7 +111,7 @@ func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacen
 
 // getCategories returns all tag categories.
 func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	tagManager := ctx.TagManager
@@ -121,7 +125,7 @@ func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
 
 // getAncestors returns a list of ancestor objects related to the passed in ManagedObjectReference.
 func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo.ManagedEntity, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	ancestors, err := mo.Ancestors(tctx,
@@ -135,10 +139,67 @@ func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo
 }
 
 func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Reference) ([]vapitags.AttachedTags, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	tagManager := ctx.TagManager
 	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
 	return attachedTags, err
+}
+
+func convertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckContext) {
+	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
+
+	if infra.Spec.PlatformSpec.VSphere != nil {
+		infra.Spec.PlatformSpec.VSphere.DeepCopyInto(checkContext.PlatformSpec)
+	}
+
+	if checkContext.VMConfig != nil {
+		config := checkContext.VMConfig
+		if checkContext.PlatformSpec != nil {
+			if len(checkContext.PlatformSpec.VCenters) != 0 {
+				// we need to check if we really need to add to VCenters and FailureDomains
+				vcenter := vCentersToMap(checkContext.PlatformSpec.VCenters)
+
+				// vcenter is missing from the map, add it...
+				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
+					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+			} else {
+				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+			}
+		}
+	}
+}
+
+func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	if ccmVcenter, ok := config.VirtualCenter[config.Workspace.VCenterIP]; ok {
+		datacenters := strings.Split(ccmVcenter.Datacenters, ",")
+
+		platformSpec.VCenters = append(platformSpec.VCenters, ocpv1.VSpherePlatformVCenterSpec{
+			Server:      config.Workspace.VCenterIP,
+			Datacenters: datacenters,
+		})
+
+		platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
+			Name:   "",
+			Region: "",
+			Zone:   "",
+			Server: config.Workspace.VCenterIP,
+			Topology: ocpv1.VSpherePlatformTopology{
+				Datacenter:   config.Workspace.Datacenter,
+				Folder:       config.Workspace.Folder,
+				ResourcePool: config.Workspace.ResourcePoolPath,
+				Datastore:    config.Workspace.DefaultDatastore,
+			},
+		})
+	}
+}
+
+func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
+	vcenterMap := make(map[string]ocpv1.VSpherePlatformVCenterSpec, len(vcenters))
+	for _, v := range vcenters {
+		vcenterMap[v.Server] = v
+	}
+	return vcenterMap
 }

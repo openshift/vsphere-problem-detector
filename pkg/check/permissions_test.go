@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/check/mock"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
@@ -176,12 +177,12 @@ func TestPermissionValidate(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	kubeClient := &fakeKubeClient{
-		infrastructure: infrastructure(),
-		nodes:          defaultNodes(),
+	kubeClient := &testlib.FakeKubeClient{
+		Infrastructure: testlib.Infrastructure(),
+		Nodes:          testlib.DefaultNodes(),
 	}
 
-	simctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
+	simctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 	if err != nil {
 		t.Fatalf("setupSimulator failed: %s", err)
 	}

@@ -10,6 +10,7 @@ import (
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
@@ -20,7 +21,6 @@ import (
 	"github.com/vmware/govmomi/vim25/soap"
 	"gopkg.in/gcfg.v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
 
@@ -372,7 +372,7 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 }
 
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
-	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel := context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
@@ -416,7 +416,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 
 	insecure := cfg.Global.InsecureFlag
 
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
 

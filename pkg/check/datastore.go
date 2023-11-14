@@ -17,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 const (
@@ -196,7 +197,7 @@ func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *co
 
 // checkStoragePolicy lists all datastores compatible with given policy.
 func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]string, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	pbmClient, err := pbm.NewClient(tctx, ctx.VMClient)
 	if err != nil {
@@ -207,7 +208,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	kind := []string{"Datastore"}
 	m := view.NewManager(ctx.VMClient)
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
@@ -215,7 +216,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	}
 
 	var content []vim.ObjectContent
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	err = v.Retrieve(tctx, kind, []string{"name"}, &content)
 	_ = v.Destroy(tctx)
@@ -242,7 +243,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 	}
 
 	// Match the datastores with the policy
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	res, err := pbmClient.CheckRequirements(tctx, hubs, nil, req)
 	if err != nil {
@@ -258,7 +259,7 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]str
 }
 
 func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	c, err := pbm.NewClient(tctx, ctx.VMClient)
 	if err != nil {
@@ -269,14 +270,14 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	}
 	category := types.PbmProfileCategoryEnumREQUIREMENT
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	ids, err := c.QueryProfile(tctx, rtype, string(category))
 	if err != nil {
 		return nil, fmt.Errorf("error querying storage profiles: %v", err)
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	profiles, err := c.RetrieveContent(tctx, ids)
 	if err != nil {
@@ -288,7 +289,7 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 			return []types.BasePbmProfile{p}, nil
 		}
 	}
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	profileContent, err := c.RetrieveContent(tctx, []types.PbmProfileId{{UniqueId: name}})
 	if err != nil {

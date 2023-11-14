@@ -40,7 +40,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 	// Load the HostSystem properties
 	host := object.NewHostSystem(ctx.VMClient, *hostRef)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	var o mo.HostSystem
 

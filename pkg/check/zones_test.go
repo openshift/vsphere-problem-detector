@@ -11,6 +11,7 @@ import (
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
 	v1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
 const (
@@ -243,14 +244,14 @@ func TestValidate(t *testing.T) {
 			if test.checkZoneTagsMethod != nil {
 				fmt.Println("Setting up test...")
 				// Setup test
-				kubeClient := &fakeKubeClient{
-					nodes:          defaultNodes(),
-					infrastructure: test.infrastructure,
+				kubeClient := &testlib.FakeKubeClient{
+					Nodes:          testlib.DefaultNodes(),
+					Infrastructure: test.infrastructure,
 				}
 
 				var checkContext *CheckContext
 				var cleanup func()
-				checkContext, cleanup, err = SetupSimulator(kubeClient, defaultModel)
+				checkContext, cleanup, err = SetupSimulator(kubeClient, testlib.DefaultModel)
 				if err != nil {
 					t.Fatalf("setupSimulator failed: %s", err)
 				}

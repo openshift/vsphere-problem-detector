@@ -3,6 +3,7 @@ package check
 import (
 	"testing"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
@@ -33,18 +34,18 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 				t.Errorf("StartCheck failed: %s", err)
 			}
 
-			kubeClient := &fakeKubeClient{
-				nodes: defaultNodes(),
+			kubeClient := &testlib.FakeKubeClient{
+				Nodes: testlib.DefaultNodes(),
 			}
-			ctx, cleanup, err := SetupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
 
 			// Set VM disk.enableUUID
-			node := kubeClient.nodes[0]
-			err = customizeVM(ctx, node, &types.VirtualMachineConfigSpec{
+			node := kubeClient.Nodes[0]
+			err = testlib.CustomizeVM(ctx.VMClient, node, &types.VirtualMachineConfigSpec{
 				ExtraConfig: []types.BaseOptionValue{
 					&types.OptionValue{
 						Key: "SET.config.flags.diskUuidEnabled", Value: test.uuidEnabled,
@@ -54,13 +55,13 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 				t.Fatalf("Failed to customize node: %s", err)
 			}
 
-			vm, err := getVM(ctx, node)
+			vm, err := testlib.GetVM(ctx.VMClient, node)
 			if err != nil {
 				t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 			}
 
 			// Act
-			err = check.CheckNode(ctx, kubeClient.nodes[0], vm)
+			err = check.CheckNode(ctx, kubeClient.Nodes[0], vm)
 
 			// Assert
 			if err != nil && !test.expectError {

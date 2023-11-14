@@ -2,8 +2,6 @@ package check
 
 import (
 	"context"
-	"flag"
-	"time"
 
 	"github.com/vmware/govmomi"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
@@ -15,15 +13,13 @@ import (
 	"k8s.io/legacy-cloud-providers/vsphere"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 var (
-	// Make the vSphere call timeout configurable.
-	Timeout = flag.Duration("vmware-timeout", 5*time.Minute, "Timeout of all VMware calls")
-
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
 		"CheckTaskPermissions":    CheckTaskPermissions,
@@ -64,7 +60,7 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
-	Cache            VSphereCache
+	Cache            cache.VSphereCache
 	MetricsCollector *metrics.Collector
 	Context          context.Context
 	VMConfig         *vsphere.VSphereConfig

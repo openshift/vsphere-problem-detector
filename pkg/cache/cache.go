@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
@@ -15,6 +15,12 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
+)
+
+const (
+	dataCenterType        = "Datacenter"
+	DatastoreInfoProperty = "info"
+	SummaryProperty       = "summary"
 )
 
 // VSphereCache is an interface to cache of frequently accessed vCenter objects,
@@ -70,7 +76,7 @@ func (c *vSphereCache) getDatacenterLocked(ctx context.Context, dcName string) (
 	}
 
 	klog.V(4).Infof("Loading datacenter %s", dcName)
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	finder := find.NewFinder(c.vmClient, false)
 	dcObject, err := finder.Datacenter(tctx, dcName)
@@ -99,7 +105,7 @@ func (c *vSphereCache) getDatastoresLocked(ctx context.Context, dcName string) (
 
 	klog.V(4).Infof("Loading datastores for datacenter %s", dcName)
 	// Retrieve both object.Datastore and ManagedObjects
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 
 	finder := find.NewFinder(c.vmClient, false)
@@ -117,7 +123,7 @@ func (c *vSphereCache) getDatastoresLocked(ctx context.Context, dcName string) (
 
 	var dsMoList []mo.Datastore
 	pc := property.DefaultCollector(cdc.dc.Client())
-	properties := []string{check.DatastoreInfoProperty, check.SummaryProperty, "customValue"}
+	properties := []string{DatastoreInfoProperty, SummaryProperty, "customValue"}
 	err = pc.Retrieve(tctx, dsList, properties, &dsMoList)
 	if err != nil {
 		klog.Errorf("failed to get Datastore managed objects from datastore objects."+
@@ -255,7 +261,7 @@ func (c *vSphereCache) GetStoragePods(ctx context.Context) ([]mo.StoragePod, err
 	// list datastore cluster
 	m := view.NewManager(c.vmClient)
 	kind := []string{"StoragePod"}
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	v, err := m.CreateContainerView(tctx, c.vmClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
@@ -268,9 +274,9 @@ func (c *vSphereCache) GetStoragePods(ctx context.Context) ([]mo.StoragePod, err
 	}()
 
 	var content []mo.StoragePod
-	tctx, cancel = context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel = context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
-	err = v.Retrieve(tctx, kind, []string{check.SummaryProperty, "childEntity"}, &content)
+	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
 	if err != nil {
 		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
 		// it is possible that we do not actually have permission to fetch datastore clusters
