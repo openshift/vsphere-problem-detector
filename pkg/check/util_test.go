@@ -20,7 +20,7 @@ func SetupSimulator(kubeClient *testlib.FakeKubeClient, modelDir string) (ctx *C
 
 	ctx.Username = setup.Username
 	if kubeClient != nil && kubeClient.Infrastructure != nil {
-		convertToPlatformSpec(kubeClient.Infrastructure, ctx)
+		ConvertToPlatformSpec(kubeClient.Infrastructure, ctx)
 	}
 	return ctx, cleanup, err
 }

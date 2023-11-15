@@ -77,7 +77,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	checkContext.ClusterInfo = clusterInfo
 	checkContext.MetricsCollector = v.controller.metricsCollector
 
-	convertToPlatformSpec(infra, checkContext)
+	check.ConvertToPlatformSpec(infra, checkContext)
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 
@@ -97,67 +97,6 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	klog.Infof("Finished running all vSphere specific checks in the cluster")
 	v.controller.metricsCollector.FinishedAllChecks()
 	return resultCollector, nil
-}
-
-// The idea here is to create a single source of truth in
-// regards to the topology of vSphere infra.
-// The API Platform Spec seems like a good place to
-// shove this data into.
-func convertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *check.CheckContext) {
-	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
-
-	if infra.Spec.PlatformSpec.VSphere != nil {
-		infra.Spec.PlatformSpec.VSphere.DeepCopyInto(checkContext.PlatformSpec)
-	}
-
-	if checkContext.VMConfig != nil {
-		config := checkContext.VMConfig
-		if checkContext.PlatformSpec != nil {
-			if len(checkContext.PlatformSpec.VCenters) != 0 {
-				// we need to check if we really need to add to VCenters and FailureDomains
-				vcenter := vCentersToMap(checkContext.PlatformSpec.VCenters)
-
-				// vcenter is missing from the map, add it...
-				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
-					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
-				}
-			} else {
-				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
-			}
-		}
-	}
-}
-
-func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
-	if ccmVcenter, ok := config.VirtualCenter[config.Workspace.VCenterIP]; ok {
-		datacenters := strings.Split(ccmVcenter.Datacenters, ",")
-
-		platformSpec.VCenters = append(platformSpec.VCenters, ocpv1.VSpherePlatformVCenterSpec{
-			Server:      config.Workspace.VCenterIP,
-			Datacenters: datacenters,
-		})
-
-		platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
-			Name:   "",
-			Region: "",
-			Zone:   "",
-			Server: config.Workspace.VCenterIP,
-			Topology: ocpv1.VSpherePlatformTopology{
-				Datacenter:   config.Workspace.Datacenter,
-				Folder:       config.Workspace.Folder,
-				ResourcePool: config.Workspace.ResourcePoolPath,
-				Datastore:    config.Workspace.DefaultDatastore,
-			},
-		})
-	}
-}
-
-func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
-	vcenterMap := make(map[string]ocpv1.VSpherePlatformVCenterSpec, len(vcenters))
-	for _, v := range vcenters {
-		vcenterMap[v.Server] = v
-	}
-	return vcenterMap
 }
 
 func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, error) {

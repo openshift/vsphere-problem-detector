@@ -151,6 +151,7 @@ func (c *vSphereCache) getDatastoresLocked(ctx context.Context, dcName string) (
 			}
 		}
 		if !moFound {
+			klog.Warningf("unable to find managed object for datastore %s", ds.Name())
 			errs = append(errs, fmt.Errorf("cannot find managed object for datastore %s", ds.Name()))
 		}
 	}

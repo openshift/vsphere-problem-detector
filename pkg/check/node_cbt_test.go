@@ -18,15 +18,15 @@ import (
 )
 
 var (
-	notSetNode1   = testlib.SimulatedVM{"DC0_H0_VM0", "265104de-1472-547c-b873-6dc7883fb6cb"} //b4689bed-97f0-5bcd-8a4c-07477cc8f06f
-	notSetNode2   = testlib.SimulatedVM{"DC0_H0_VM1", "39365506-5a0a-5fd0-be10-9586ad53aaad"}
-	notSetNode3   = testlib.SimulatedVM{"DC0_C0_RP0_VM0", "cd0681bf-2f18-5c00-9b9b-8197c0095348"}
-	disabledNode1 = testlib.SimulatedVM{"DC0_C0_RP0_VM1", "f7c371d6-2003-5a48-9859-3bc9a8b08908"}
-	disabledNode2 = testlib.SimulatedVM{"DC0_C0_APP0_VM0", "bb58202a-c925-5cb6-b552-a8648ba3f1d5"}
-	disabledNode3 = testlib.SimulatedVM{"DC0_C0_APP0_VM1", "baf53482-475d-59dc-8777-2b193e7af804"}
-	enabledNode1  = testlib.SimulatedVM{"DC1_H0_VM0", "7930a567-e3b5-5e70-8d60-d32f5c963f60"}
-	enabledNode2  = testlib.SimulatedVM{"DC1_H0_VM1", "45412182-a62f-5c2f-bacb-4d3a45e2e5d9"}
-	enabledNode3  = testlib.SimulatedVM{"DC1_C0_RP0_VM0", "48cb9b41-18e2-5b40-8751-9f67e5cfbd87"}
+	notSetNode1   = testlib.SimulatedVM{Name: "DC0_H0_VM0", UUID: "265104de-1472-547c-b873-6dc7883fb6cb"} //b4689bed-97f0-5bcd-8a4c-07477cc8f06f
+	notSetNode2   = testlib.SimulatedVM{Name: "DC0_H0_VM1", UUID: "39365506-5a0a-5fd0-be10-9586ad53aaad"}
+	notSetNode3   = testlib.SimulatedVM{Name: "DC0_C0_RP0_VM0", UUID: "cd0681bf-2f18-5c00-9b9b-8197c0095348"}
+	disabledNode1 = testlib.SimulatedVM{Name: "DC0_C0_RP0_VM1", UUID: "f7c371d6-2003-5a48-9859-3bc9a8b08908"}
+	disabledNode2 = testlib.SimulatedVM{Name: "DC0_C0_APP0_VM0", UUID: "bb58202a-c925-5cb6-b552-a8648ba3f1d5"}
+	disabledNode3 = testlib.SimulatedVM{Name: "DC0_C0_APP0_VM1", UUID: "baf53482-475d-59dc-8777-2b193e7af804"}
+	enabledNode1  = testlib.SimulatedVM{Name: "DC1_H0_VM0", UUID: "7930a567-e3b5-5e70-8d60-d32f5c963f60"}
+	enabledNode2  = testlib.SimulatedVM{Name: "DC1_H0_VM1", UUID: "45412182-a62f-5c2f-bacb-4d3a45e2e5d9"}
+	enabledNode3  = testlib.SimulatedVM{Name: "DC1_C0_RP0_VM0", UUID: "48cb9b41-18e2-5b40-8751-9f67e5cfbd87"}
 )
 
 // LIST OF NODES AND THEIR PROPERTY CONFIG

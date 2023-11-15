@@ -27,7 +27,20 @@ func getDataStoreByName(ctx *CheckContext, dsName string, dc *object.Datacenter)
 }
 
 func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
-	return ctx.Cache.GetDatastoreByURL(ctx.Context, ctx.VMConfig.Workspace.Datacenter, dsURL)
+	var dsMo mo.Datastore
+
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		datastore, err := ctx.Cache.GetDatastoreByURL(ctx.Context, fd.Topology.Datacenter, dsURL)
+		if err != nil {
+			klog.Errorf("error fetching datastoreURL %s from datacenter %s", dsURL, fd.Topology.Datacenter)
+			return dsMo, err
+		}
+		if datastore.Info.GetDatastoreInfo().Url == dsURL {
+			return datastore, nil
+		}
+	}
+
+	return dsMo, fmt.Errorf("unable to find datastore with URL %s", dsURL)
 }
 
 func getDataStoreMoByName(ctx *CheckContext, datastoreName string) (mo.Datastore, error) {
@@ -147,7 +160,7 @@ func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Referenc
 	return attachedTags, err
 }
 
-func convertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckContext) {
+func ConvertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckContext) {
 	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
 
 	if infra.Spec.PlatformSpec.VSphere != nil {
