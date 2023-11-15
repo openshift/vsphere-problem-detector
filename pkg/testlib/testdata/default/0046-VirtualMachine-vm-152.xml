@@ -245,7 +245,7 @@
           </deviceInfo>
           <backing XMLSchema-instance:type="VirtualDiskFlatVer2BackingInfo">
             <fileName>[LocalDS_0] DC0_H0_VM0/disk1.vmdk</fileName>
-            <datastore type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
+            <datastore type="Datastore">testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
             <diskMode>persistent</diskMode>
             <split>false</split>
             <writeThrough>false</writeThrough>
@@ -393,7 +393,7 @@
     <name>storage</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="VirtualMachineStorageInfo">
       <perDatastoreUsage>
-        <datastore type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
+        <datastore type="Datastore">testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
         <committed>0</committed>
         <uncommitted>0</uncommitted>
         <unshared>0</unshared>
@@ -478,7 +478,7 @@
   <propSet>
     <name>datastore</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfManagedObjectReference">
-      <ManagedObjectReference type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</ManagedObjectReference>
+      <ManagedObjectReference type="Datastore">testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</ManagedObjectReference>
     </val>
   </propSet>
   <propSet>

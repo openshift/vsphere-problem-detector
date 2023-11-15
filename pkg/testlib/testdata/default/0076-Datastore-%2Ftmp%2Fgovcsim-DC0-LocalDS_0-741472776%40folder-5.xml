@@ -1,5 +1,5 @@
 <ObjectContent>
-  <obj type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</obj>
+  <obj type="Datastore">testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</obj>
   <propSet>
     <name>value</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="ArrayOfCustomFieldValue"></val>
@@ -66,20 +66,20 @@
     <name>info</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="LocalDatastoreInfo">
       <name>LocalDS_0</name>
-      <url>testdata/default/govcsim-DC0-LocalDS_0-741472776</url>
+      <url>testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776</url>
       <freeSpace>33505005568</freeSpace>
       <maxFileSize>33511297024</maxFileSize>
       <maxMemoryFileSize>33511297024</maxMemoryFileSize>
       <timestamp>2021-02-09T22:59:58.25671251-05:00</timestamp>
-      <path>testdata/default/govcsim-DC0-LocalDS_0-741472776</path>
+      <path>testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776</path>
     </val>
   </propSet>
   <propSet>
     <name>summary</name>
     <val xmlns:XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" XMLSchema-instance:type="DatastoreSummary">
-      <datastore type="Datastore">testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
+      <datastore type="Datastore">testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776@folder-5</datastore>
       <name>LocalDS_0</name>
-      <url>testdata/default/govcsim-DC0-LocalDS_0-741472776</url>
+      <url>testlib/testdata/default/govcsim-DC0-LocalDS_0-741472776</url>
       <capacity>33681489920</capacity>
       <freeSpace>33505005568</freeSpace>
       <accessible>true</accessible>
