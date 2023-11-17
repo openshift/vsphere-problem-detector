@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -26,29 +27,32 @@ func getDataStoreByName(ctx *CheckContext, dsName string, dc *object.Datacenter)
 	return ctx.Cache.GetDatastore(ctx.Context, dc.Name(), dsName)
 }
 
-func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-
+func getDatastoreByURL(ctx *CheckContext, dsURL string) (dsMo mo.Datastore, dcName string, err error) {
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
-		datastore, err := ctx.Cache.GetDatastoreByURL(ctx.Context, fd.Topology.Datacenter, dsURL)
+		dsMo, err = ctx.Cache.GetDatastoreByURL(ctx.Context, fd.Topology.Datacenter, dsURL)
 		if err != nil {
+			if err == cache.ErrDatastoreNotFound {
+				continue
+			}
 			klog.Errorf("error fetching datastoreURL %s from datacenter %s", dsURL, fd.Topology.Datacenter)
-			return dsMo, err
+			return
 		}
-		if datastore.Info.GetDatastoreInfo().Url == dsURL {
-			return datastore, nil
+		if dsMo.Info.GetDatastoreInfo().Url == dsURL {
+			dcName = fd.Topology.Datacenter
+			return
 		}
 	}
 
-	return dsMo, fmt.Errorf("unable to find datastore with URL %s", dsURL)
+	err = fmt.Errorf("unable to find datastore with URL %s", dsURL)
+	return
 }
 
-func getDataStoreMoByName(ctx *CheckContext, datastoreName string) (mo.Datastore, error) {
-	return ctx.Cache.GetDatastoreMo(ctx.Context, ctx.VMConfig.Workspace.Datacenter, datastoreName)
+func getDataStoreMoByName(ctx *CheckContext, datastoreName, dcName string) (mo.Datastore, error) {
+	return ctx.Cache.GetDatastoreMo(ctx.Context, dcName, datastoreName)
 }
 
-func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
-	return ctx.Cache.GetDatastoreMoByReference(ctx.Context, ctx.VMConfig.Workspace.Datacenter, ref)
+func getDatastore(ctx *CheckContext, dcName string, ref vim.ManagedObjectReference) (mo.Datastore, error) {
+	return ctx.Cache.GetDatastoreMoByReference(ctx.Context, dcName, ref)
 }
 
 func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.ClusterComputeResource, error) {

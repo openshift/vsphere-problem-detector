@@ -40,6 +40,10 @@ type VSphereCache interface {
 	GetStoragePods(ctx context.Context) ([]mo.StoragePod, error)
 }
 
+var (
+	ErrDatastoreNotFound = fmt.Errorf("datastore not found")
+)
+
 // vSphereCache caches frequently accessed vCenter objects for a single check run.
 type vSphereCache struct {
 	vmClient    *vim25.Client
@@ -206,9 +210,7 @@ func (c *vSphereCache) GetDatastoreByURL(ctx context.Context, dcName, dsURL stri
 			return *cds.dsMo, nil
 		}
 	}
-	err = fmt.Errorf("couldn't find Datastore given URL %q in datacenter %s", dsURL, dcName)
-	klog.Error(err)
-	return mo.Datastore{}, err
+	return mo.Datastore{}, ErrDatastoreNotFound
 }
 
 func (c *vSphereCache) GetDatastoreMo(ctx context.Context, dcName, dsName string) (mo.Datastore, error) {

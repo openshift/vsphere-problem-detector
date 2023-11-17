@@ -206,6 +206,11 @@ func Infrastructure(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastruct
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "cluster",
 		},
+		Spec: ocpv1.InfrastructureSpec{
+			PlatformSpec: ocpv1.PlatformSpec{
+				VSphere: &ocpv1.VSpherePlatformSpec{},
+			},
+		},
 		Status: ocpv1.InfrastructureStatus{
 			InfrastructureName: "my-cluster-id",
 		},
