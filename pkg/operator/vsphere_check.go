@@ -23,8 +23,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/vsphere"
-
-	vsphereconfig "k8s.io/cloud-provider-vsphere/pkg/common/config"
 )
 
 type vSphereCheckerInterface interface {
@@ -109,13 +107,6 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 		return nil, err
 	}
 
-	// external CCM configuration INI and yaml parser
-	// and backward compatible with intree
-	externalCfg, err := vsphereconfig.ReadConfig([]byte(cfgString))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse config: %s", err)
-	}
-
 	// intree configuration
 	cfg, err := parseConfig(cfgString)
 	if err != nil {
@@ -157,29 +148,28 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
 	checkContext := &check.CheckContext{
-		Context:          ctx,
-		ExternalVMConfig: externalCfg,
-		VMConfig:         cfg,
-		VMClient:         vmClient.Client,
-		GovmomiClient:    vmClient,
-		TagManager:       vapitags.NewManager(restClient),
+		Context:       ctx,
+		VMConfig:      cfg,
+		VMClient:      vmClient.Client,
+		GovmomiClient: vmClient,
+		TagManager:    vapitags.NewManager(restClient),
 		// Each check run gets its own cache
 		Cache: cache.NewCheckCache(vmClient.Client),
 	}
 	return checkContext, nil
 }
 
-func (c *vSphereChecker) getCredentials(vCenterIP string) (string, string, error) {
+func (c *vSphereChecker) getCredentials(vCenterAddress string) (string, string, error) {
 	secret, err := c.controller.secretLister.Secrets(operatorNamespace).Get(cloudCredentialsSecretName)
 	if err != nil {
 		return "", "", err
 	}
-	userKey := vCenterIP + "." + "username"
+	userKey := vCenterAddress + "." + "username"
 	username, ok := secret.Data[userKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, userKey)
 	}
-	passwordKey := vCenterIP + "." + "password"
+	passwordKey := vCenterAddress + "." + "password"
 	password, ok := secret.Data[passwordKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, passwordKey)
@@ -329,6 +319,8 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
 
 	var o mo.VirtualMachine
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
+	defer cancel()
 	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load VM %s: %s", node.Name, err)

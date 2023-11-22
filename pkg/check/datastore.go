@@ -153,7 +153,7 @@ func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCol
 		dsName := fd.Topology.Datastore
 		dcName := fd.Topology.Datacenter
 		if err := checkDataStore(ctx, dsName, dcName, dsTypes); err != nil {
-			return fmt.Errorf("defaultDatastore %q in vSphere configuration: %s", dsName, err)
+			return fmt.Errorf("defaultDatastore %s/%q in vSphere configuration: %s", dcName, dsName, err)
 		}
 	}
 	return nil

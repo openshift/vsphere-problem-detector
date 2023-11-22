@@ -9,7 +9,6 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	vsphereccm "k8s.io/cloud-provider-vsphere/pkg/common/config"
 	"k8s.io/legacy-cloud-providers/vsphere"
 
 	ocpv1 "github.com/openshift/api/config/v1"
@@ -64,7 +63,6 @@ type CheckContext struct {
 	MetricsCollector *metrics.Collector
 	Context          context.Context
 	VMConfig         *vsphere.VSphereConfig
-	ExternalVMConfig *vsphereccm.Config
 	GovmomiClient    *govmomi.Client
 	VMClient         *vim25.Client
 	TagManager       *vapitags.Manager
