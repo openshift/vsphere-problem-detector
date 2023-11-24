@@ -6,7 +6,7 @@ require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/go-logr/logr v1.3.0 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/openshift/api v0.0.0-20231120145327-841b3aa7251d
@@ -48,7 +48,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
-	github.com/felixge/httpsnoop v1.0.3 // indirect
+	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -84,13 +84,13 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.5.9 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.9 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.35.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.45.0 // indirect
-	go.opentelemetry.io/otel v1.19.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.46.0 // indirect
+	go.opentelemetry.io/otel v1.21.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0 // indirect
-	go.opentelemetry.io/otel/metric v1.19.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.19.0 // indirect
-	go.opentelemetry.io/otel/trace v1.19.0 // indirect
+	go.opentelemetry.io/otel/metric v1.21.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.21.0 // indirect
+	go.opentelemetry.io/otel/trace v1.21.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
