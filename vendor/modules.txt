@@ -170,7 +170,7 @@ github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/openshift/api v0.0.0-20230509100629-894b49f57a15
+# github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 ## explicit; go 1.20
 github.com/openshift/api/config/v1
 github.com/openshift/api/config/v1alpha1
@@ -219,7 +219,7 @@ github.com/openshift/client-go/operator/informers/externalversions/operator/v1
 github.com/openshift/client-go/operator/informers/externalversions/operator/v1alpha1
 github.com/openshift/client-go/operator/listers/operator/v1
 github.com/openshift/client-go/operator/listers/operator/v1alpha1
-# github.com/openshift/library-go v0.0.0-20230508110756-9b7abe2c9cbf
+# github.com/openshift/library-go v0.0.0-20231103161458-0ec67489d123
 ## explicit; go 1.20
 github.com/openshift/library-go/pkg/authorization/hardcodedauthorizer
 github.com/openshift/library-go/pkg/config/client
@@ -273,7 +273,7 @@ github.com/robfig/cron
 # github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/spf13/cobra v1.6.0
+# github.com/spf13/cobra v1.6.1
 ## explicit; go 1.15
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
@@ -603,7 +603,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.27.1
+# k8s.io/api v0.27.4
 ## explicit; go 1.20
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -659,7 +659,7 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.27.1
+# k8s.io/apimachinery v0.27.4
 ## explicit; go 1.20
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -715,7 +715,7 @@ k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/apiserver v0.27.1
+# k8s.io/apiserver v0.27.4
 ## explicit; go 1.20
 k8s.io/apiserver/pkg/admission
 k8s.io/apiserver/pkg/admission/cel
@@ -857,7 +857,7 @@ k8s.io/apiserver/plugin/pkg/audit/truncate
 k8s.io/apiserver/plugin/pkg/audit/webhook
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook
-# k8s.io/client-go v0.27.1
+# k8s.io/client-go v0.27.4
 ## explicit; go 1.20
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
@@ -1118,7 +1118,7 @@ k8s.io/cloud-provider/node/helpers
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
-# k8s.io/component-base v0.27.1
+# k8s.io/component-base v0.27.4
 ## explicit; go 1.20
 k8s.io/component-base/cli
 k8s.io/component-base/cli/flag
@@ -1152,14 +1152,14 @@ k8s.io/klog/v2/internal/clock
 k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
-# k8s.io/kms v0.27.1
+# k8s.io/kms v0.27.4
 ## explicit; go 1.20
 k8s.io/kms/apis/v1beta1
 k8s.io/kms/apis/v2
 k8s.io/kms/pkg/service
 k8s.io/kms/pkg/util
-# k8s.io/kube-openapi v0.0.0-20230308215209-15aac26d736a
-## explicit; go 1.18
+# k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f
+## explicit; go 1.19
 k8s.io/kube-openapi/pkg/builder
 k8s.io/kube-openapi/pkg/builder3
 k8s.io/kube-openapi/pkg/builder3/util
@@ -1199,7 +1199,7 @@ k8s.io/utils/path
 k8s.io/utils/pointer
 k8s.io/utils/strings/slices
 k8s.io/utils/trace
-# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.1
+# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2
 ## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
