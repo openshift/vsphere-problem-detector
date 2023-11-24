@@ -76,7 +76,6 @@ type TracerProvider struct {
 	mu             sync.Mutex
 	namedTracer    map[instrumentation.Scope]*tracer
 	spanProcessors atomic.Value
-	isShutdown     bool
 
 	// These fields are not protected by the lock mu. They are assumed to be
 	// immutable after creation of the TracerProvider.
@@ -117,13 +116,12 @@ func NewTracerProvider(opts ...TracerProviderOption) *TracerProvider {
 		spanLimits:  o.spanLimits,
 		resource:    o.resource,
 	}
+
 	global.Info("TracerProvider created", "config", o)
 
-	spss := spanProcessorStates{}
 	for _, sp := range o.processors {
-		spss = append(spss, newSpanProcessorState(sp))
+		tp.RegisterSpanProcessor(sp)
 	}
-	tp.spanProcessors.Store(spss)
 
 	return tp
 }
@@ -161,44 +159,44 @@ func (p *TracerProvider) Tracer(name string, opts ...trace.TracerOption) trace.T
 }
 
 // RegisterSpanProcessor adds the given SpanProcessor to the list of SpanProcessors.
-func (p *TracerProvider) RegisterSpanProcessor(sp SpanProcessor) {
+func (p *TracerProvider) RegisterSpanProcessor(s SpanProcessor) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.isShutdown {
-		return
-	}
 	newSPS := spanProcessorStates{}
-	newSPS = append(newSPS, p.spanProcessors.Load().(spanProcessorStates)...)
-	newSPS = append(newSPS, newSpanProcessorState(sp))
+	if old, ok := p.spanProcessors.Load().(spanProcessorStates); ok {
+		newSPS = append(newSPS, old...)
+	}
+	newSpanSync := &spanProcessorState{
+		sp:    s,
+		state: &sync.Once{},
+	}
+	newSPS = append(newSPS, newSpanSync)
 	p.spanProcessors.Store(newSPS)
 }
 
 // UnregisterSpanProcessor removes the given SpanProcessor from the list of SpanProcessors.
-func (p *TracerProvider) UnregisterSpanProcessor(sp SpanProcessor) {
+func (p *TracerProvider) UnregisterSpanProcessor(s SpanProcessor) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.isShutdown {
-		return
-	}
-	old := p.spanProcessors.Load().(spanProcessorStates)
-	if len(old) == 0 {
-		return
-	}
 	spss := spanProcessorStates{}
+	old, ok := p.spanProcessors.Load().(spanProcessorStates)
+	if !ok || len(old) == 0 {
+		return
+	}
 	spss = append(spss, old...)
 
 	// stop the span processor if it is started and remove it from the list
 	var stopOnce *spanProcessorState
 	var idx int
 	for i, sps := range spss {
-		if sps.sp == sp {
+		if sps.sp == s {
 			stopOnce = sps
 			idx = i
 		}
 	}
 	if stopOnce != nil {
 		stopOnce.state.Do(func() {
-			if err := sp.Shutdown(context.Background()); err != nil {
+			if err := s.Shutdown(context.Background()); err != nil {
 				otel.Handle(err)
 			}
 		})
@@ -215,7 +213,10 @@ func (p *TracerProvider) UnregisterSpanProcessor(sp SpanProcessor) {
 // ForceFlush immediately exports all spans that have not yet been exported for
 // all the registered span processors.
 func (p *TracerProvider) ForceFlush(ctx context.Context) error {
-	spss := p.spanProcessors.Load().(spanProcessorStates)
+	spss, ok := p.spanProcessors.Load().(spanProcessorStates)
+	if !ok {
+		return fmt.Errorf("failed to load span processors")
+	}
 	if len(spss) == 0 {
 		return nil
 	}
@@ -234,18 +235,12 @@ func (p *TracerProvider) ForceFlush(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown shuts down TracerProvider. All registered span processors are shut down
-// in the order they were registered and any held computational resources are released.
+// Shutdown shuts down the span processors in the order they were registered.
 func (p *TracerProvider) Shutdown(ctx context.Context) error {
-	spss := p.spanProcessors.Load().(spanProcessorStates)
-	if len(spss) == 0 {
-		return nil
+	spss, ok := p.spanProcessors.Load().(spanProcessorStates)
+	if !ok {
+		return fmt.Errorf("failed to load span processors")
 	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.isShutdown = true
-
 	var retErr error
 	for _, sps := range spss {
 		select {
@@ -267,7 +262,6 @@ func (p *TracerProvider) Shutdown(ctx context.Context) error {
 			}
 		}
 	}
-	p.spanProcessors.Store(spanProcessorStates{})
 	return retErr
 }
 
