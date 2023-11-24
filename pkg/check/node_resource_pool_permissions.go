@@ -28,7 +28,7 @@ func (c *CheckResourcePoolPermissions) StartCheck() error {
 func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) error {
 	resourcePool, resourcePoolPath, err := getResourcePool(ctx, vm.Reference())
 	if err != nil {
-		klog.Info("resource pool could not be obtained for %v", vm.Reference())
+		klog.Infof("resource pool could not be obtained for %v", vm.Reference())
 		return nil
 	}
 
