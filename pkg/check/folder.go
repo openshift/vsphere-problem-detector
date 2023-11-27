@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
@@ -16,26 +17,28 @@ import (
 // The check tries to list "kubevols/". It tolerates when it's missing,
 // it will be created by OCP on the first provisioning.
 func CheckFolderPermissions(ctx *CheckContext) error {
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return err
-	}
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		dc, err := getDatacenter(ctx, fd.Topology.Datacenter)
+		if err != nil {
+			return err
+		}
 
-	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, dc)
-	if err != nil {
-		return fmt.Errorf("failed to access datastore %s: %s", ctx.VMConfig.Workspace.DefaultDatastore, err)
-	}
+		ds, err := getDataStoreByName(ctx, fd.Topology.Datastore, dc)
+		if err != nil {
+			return fmt.Errorf("failed to access datastore %s: %s", fd.Topology.Datastore, err)
+		}
 
-	// OCP needs permissions to list files, try "/" that must exists.
-	err = listDirectory(ctx, ds, "/", false)
-	if err != nil {
-		return err
-	}
+		// OCP needs permissions to list files, try "/" that must exists.
+		err = listDirectory(ctx, ds, "/", false)
+		if err != nil {
+			return err
+		}
 
-	// OCP needs permissions to list "/kubelet", tolerate if it does not exist.
-	err = listDirectory(ctx, ds, "/kubevols", true)
-	if err != nil {
-		return err
+		// OCP needs permissions to list "/kubelet", tolerate if it does not exist.
+		err = listDirectory(ctx, ds, "/kubevols", true)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -44,7 +47,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	klog.V(4).Infof("Listing datastore %s path %s", ds.Name(), path)
 	dsName := ds.Name()
 
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	browser, err := ds.Browser(tctx)
@@ -55,7 +58,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	spec := types.HostDatastoreBrowserSearchSpec{
 		MatchPattern: []string{"*"},
 	}
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	task, err := browser.SearchDatastore(tctx, ds.Path(path), &spec)
 	if err != nil {
@@ -71,7 +74,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 		return nil
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	info, err := task.WaitForResult(tctx, nil)
 	if err != nil {

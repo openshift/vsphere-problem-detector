@@ -3,15 +3,17 @@ package check
 import (
 	"testing"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestCountRWXVolumes(t *testing.T) {
-	kubeClient := &fakeKubeClient{
-		infrastructure: infrastructure(),
-		nodes:          defaultNodes(),
-		pvs: []*v1.PersistentVolume{
+	kubeClient := &testlib.FakeKubeClient{
+		Infrastructure: testlib.Infrastructure(),
+		Nodes:          testlib.DefaultNodes(),
+
+		PVs: []*v1.PersistentVolume{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foobar",
@@ -56,7 +58,7 @@ func TestCountRWXVolumes(t *testing.T) {
 		},
 	}
 
-	ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+	ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 	if err != nil {
 		t.Fatalf("setupSimulator failed: %s", err)
 	}

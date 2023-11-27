@@ -4,12 +4,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/metrics/testutil"
 )
 
 func TestInfo(t *testing.T) {
-	ctx, cleanup, err := setupSimulator(nil, defaultModel)
+	ctx, cleanup, err := SetupSimulator(nil, testlib.DefaultModel)
 	if err != nil {
 		t.Fatalf("Failed to setup vSphere simulator: %s", err)
 	}

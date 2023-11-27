@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	basemetrics "k8s.io/component-base/metrics"
 )
@@ -42,10 +43,10 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
 			check := CollectNodeESXiVersion{}
-			kubeClient := &fakeKubeClient{
-				nodes: defaultNodes(),
+			kubeClient := &testlib.FakeKubeClient{
+				Nodes: testlib.DefaultNodes(),
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
@@ -54,7 +55,7 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			ctx.MetricsCollector = collector
 
 			// Set esxi version of the only host.
-			err = customizeHostVersion(defaultHostId, test.esxiVersion, test.esxiApiversion)
+			err = testlib.CustomizeHostVersion(testlib.DefaultHostId, test.esxiVersion, test.esxiApiversion)
 			if err != nil {
 				t.Fatalf("Failed to customize host: %s", err)
 			}
@@ -70,8 +71,8 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 				t.Errorf("StartCheck failed: %s", err)
 			}
 
-			for _, node := range kubeClient.nodes {
-				vm, err := getVM(ctx, node)
+			for _, node := range kubeClient.Nodes {
+				vm, err := testlib.GetVM(ctx.VMClient, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}

@@ -1,7 +1,6 @@
 package check
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/vmware/govmomi/vim25/mo"
@@ -43,10 +42,6 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 	}
 	c.computeClusters[cluster.Name] = cluster
 
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	if err := comparePrivileges(ctx.Context, ctx.Username, cluster.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
 		return fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())
 	}
@@ -72,6 +67,4 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 	return nil
 }
 
-func (c *CheckComputeClusterPermissions) FinishCheck(ctx *CheckContext) {
-	return
-}
+func (c *CheckComputeClusterPermissions) FinishCheck(ctx *CheckContext) {}
