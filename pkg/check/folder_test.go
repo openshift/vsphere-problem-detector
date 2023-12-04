@@ -3,21 +3,26 @@ package check
 import (
 	"testing"
 	"time"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 func TestCheckFolderPermissions(t *testing.T) {
 	// Very simple test, no error cases
 
 	// Stage
-	kubeClient := &fakeKubeClient{}
-	ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+	kubeClient := &testlib.FakeKubeClient{
+		Infrastructure: testlib.Infrastructure(),
+	}
+	ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 	if err != nil {
 		t.Fatalf("setupSimulator failed: %s", err)
 	}
 	defer cleanup()
 
 	// Act
-	*Timeout = time.Second
+	*util.Timeout = time.Second
 	err = CheckFolderPermissions(ctx)
 
 	// Assert

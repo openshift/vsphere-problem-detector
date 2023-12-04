@@ -4,36 +4,20 @@ import (
 	"context"
 	"fmt"
 
+	lmetric "github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
-	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 )
 
 // CollectNodeESXiVersion emits metric with version of each ESXi host that runs at least a single VM with node.
 type CollectNodeESXiVersion struct {
-	lastMetricEmission map[[2]string]int
 }
 
 var _ NodeCheck = &CollectNodeESXiVersion{}
-
-var (
-	esxiVersionMetric = metrics.NewGaugeVec(
-		&metrics.GaugeOpts{
-			Name:           "vsphere_esxi_version_total",
-			Help:           "Number of ESXi hosts with given version.",
-			StabilityLevel: metrics.ALPHA,
-		},
-		[]string{versionLabel, apiVersionLabel},
-	)
-)
-
-func init() {
-	legacyregistry.MustRegister(esxiVersionMetric)
-}
 
 func (c *CollectNodeESXiVersion) Name() string {
 	return "CollectNodeESXiVersion"
@@ -56,7 +40,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 	// Load the HostSystem properties
 	host := object.NewHostSystem(ctx.VMClient, *hostRef)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	var o mo.HostSystem
 
@@ -79,9 +63,6 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 	versions := make(map[util.ESXiVersionInfo]int)
-	for k := range c.lastMetricEmission {
-		c.lastMetricEmission[k] = 0
-	}
 
 	esxiVersions := ctx.ClusterInfo.GetHostVersions()
 	for _, v := range esxiVersions {
@@ -90,15 +71,7 @@ func (c *CollectNodeESXiVersion) FinishCheck(ctx *CheckContext) {
 
 	// Report the count
 	for v, count := range versions {
-		esxiVersionMetric.WithLabelValues(v.Version, v.APIVersion).Set(float64(count))
-		c.lastMetricEmission[[2]string{v.Version, v.APIVersion}] = count
+		m := metrics.NewLazyConstMetric(lmetric.EsxiVersionMetric, metrics.GaugeValue, float64(count), v.Version, v.APIVersion)
+		ctx.MetricsCollector.AddMetric(m)
 	}
-
-	for k, v := range c.lastMetricEmission {
-		if v == 0 {
-			esxiVersionMetric.WithLabelValues(k[0], k[1]).Set(0)
-		}
-	}
-
-	return
 }
