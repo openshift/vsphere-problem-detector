@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/vmware/govmomi/vapi/rest"
@@ -142,8 +143,11 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 		cfg.VirtualCenter[cfg.Workspace.VCenterIP].User = username
 	}
 
-	if strings.Index(username, "@") < 0 {
+	if !isValidvCenterUsernameWithDomain(username) {
 		klog.Warningf("vCenter username for %s is without domain, please consider using username with full domain name", cfg.Workspace.VCenterIP)
+		syncErrrorMetric.WithLabelValues("UsernameWithoutDomain").Set(1)
+	} else {
+		syncErrrorMetric.WithLabelValues("UsernameWithoutDomain").Set(0)
 	}
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
@@ -375,4 +379,14 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 	}
 
 	return client, restClient, nil
+}
+
+// isValidvCenterUsernameWithDomain checks whether username is valid or not.
+// vSphere considers the username invalid if it does not contain a fully qualified domain name.
+// This function was taken from the CSI driver code:
+// Take from https://github.com/kubernetes-sigs/vsphere-csi-driver/blob/a7e37ef11bad80693a250ab5a815b527d99e3401/pkg/common/config/config.go#L326-L336
+func isValidvCenterUsernameWithDomain(username string) bool {
+	regex := `^(?:[a-zA-Z0-9.-]+\\[a-zA-Z0-9._-]+|[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+)$`
+	match, _ := regexp.MatchString(regex, username)
+	return match
 }
