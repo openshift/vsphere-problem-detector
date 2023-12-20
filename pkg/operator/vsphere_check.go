@@ -305,6 +305,9 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 	defer cancel()
 
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
+	if vmUUID == "" {
+		return nil, fmt.Errorf("VMUUID is not set for node %s", node.Name)
+	}
 
 	// Find VM reference in the datastore, by UUID
 	s := object.NewSearchIndex(checkContext.VMClient)
@@ -313,6 +316,10 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 	svm, err := s.FindByUuid(tctx, nil, vmUUID, true, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
+	}
+
+	if svm == nil {
+		return nil, fmt.Errorf("failed to find VM by UUID %s", vmUUID)
 	}
 
 	// Find VM properties
