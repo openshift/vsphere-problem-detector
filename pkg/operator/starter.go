@@ -2,7 +2,6 @@ package operator
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
@@ -80,5 +79,5 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	}
 	<-ctx.Done()
 
-	return fmt.Errorf("stopped")
+	return nil
 }
