@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
@@ -12,7 +13,7 @@ import (
 // CheckFolderList tests that OCP has permissions to list volumes in Datastore.
 // This is necessary to create volumes.
 func CheckTaskPermissions(ctx *CheckContext) error {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	mgr := view.NewManager(ctx.VMClient)
@@ -22,7 +23,7 @@ func CheckTaskPermissions(ctx *CheckContext) error {
 	}
 
 	taskCount := 0
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	err = view.Collect(tctx, func(tasks []types.TaskInfo) {
 		taskCount += len(tasks)

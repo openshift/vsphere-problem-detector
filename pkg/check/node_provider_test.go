@@ -3,6 +3,7 @@ package check
 import (
 	"testing"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -14,12 +15,12 @@ func TestCheckNodeProviderID(t *testing.T) {
 	}{
 		{
 			name:        "node with provider",
-			node:        node("vm1", withProviderID("3fd46873-7ff8-4a3f-a144-b7678def1010")),
+			node:        testlib.Node("vm1", testlib.WithProviderID("3fd46873-7ff8-4a3f-a144-b7678def1010")),
 			expectError: false,
 		},
 		{
 			name:        "node without provider",
-			node:        node("vm2"),
+			node:        testlib.Node("vm2"),
 			expectError: true,
 		},
 	}
@@ -33,10 +34,10 @@ func TestCheckNodeProviderID(t *testing.T) {
 				t.Errorf("StartCheck failed: %s", err)
 			}
 
-			kubeClient := &fakeKubeClient{
-				nodes: []*v1.Node{test.node},
+			kubeClient := &testlib.FakeKubeClient{
+				Nodes: []*v1.Node{test.node},
 			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}

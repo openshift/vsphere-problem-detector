@@ -3,17 +3,18 @@ package operator
 import (
 	"context"
 	"fmt"
-	"github.com/vmware/govmomi/vapi/rest"
-	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"net/url"
 	"strings"
 
+	"github.com/vmware/govmomi/vapi/rest"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
+
 	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -39,88 +40,101 @@ func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterf
 }
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
+
+	v.controller.metricsCollector.StartMetricCollection()
+
 	resultCollector := NewResultsCollector()
-	vmConfig, vmClient, restClient, err := v.connect(ctx)
+
+	checkContext, err := v.connect(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
 	defer func() {
-		if err := vmClient.Logout(ctx); err != nil {
+		if err := checkContext.GovmomiClient.Logout(ctx); err != nil {
 			klog.Errorf("Failed to logout: %v", err)
 		}
 	}()
 
 	// Get the fully-qualified vsphere username
-	sessionMgr := session.NewManager(vmClient.Client)
+	sessionMgr := session.NewManager(checkContext.VMClient)
 	user, err := sessionMgr.UserSession(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
-	authManager := object.NewAuthorizationManager(vmClient.Client)
-
-	checkContext := &check.CheckContext{
-		Context:     ctx,
-		AuthManager: authManager,
-		VMConfig:    vmConfig,
-		VMClient:    vmClient.Client,
-		TagManager:  vapitags.NewManager(restClient),
-		Username:    user.UserName,
-		KubeClient:  v.controller,
-		ClusterInfo: clusterInfo,
-		// Each check run gets its own cache
-		Cache: check.NewCheckCache(vmClient.Client),
+	authManager := object.NewAuthorizationManager(checkContext.VMClient)
+	infra, err := v.controller.GetInfrastructure(ctx)
+	if err != nil {
+		return nil, err
 	}
+	checkContext.Context = ctx
+	checkContext.AuthManager = authManager
+	checkContext.Username = user.UserName
+	checkContext.KubeClient = v.controller
+	checkContext.ClusterInfo = clusterInfo
+	checkContext.MetricsCollector = v.controller.metricsCollector
+
+	check.ConvertToPlatformSpec(infra, checkContext)
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 
 	v.enqueueClusterChecks(checkContext, checkRunner, resultCollector)
 	if err := v.enqueueNodeChecks(checkContext, checkRunner, resultCollector); err != nil {
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
+		klog.Errorf("error waiting for metrics checks to finish: %v", err)
+		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}
 	v.finishNodeChecks(checkContext)
+	klog.Infof("Finished running all vSphere specific checks in the cluster")
+	v.controller.metricsCollector.FinishedAllChecks()
 	return resultCollector, nil
 }
 
-func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, *rest.Client, error) {
+func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, error) {
+	// use api infra as the basis of
+	// variables instead of intree
+	// external won't have these values...
+
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
+	// intree configuration
 	cfg, err := parseConfig(cfgString)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse config: %s", err)
+		return nil, fmt.Errorf("failed to parse config: %s", err)
 	}
 
-	username, password, err := c.getCredentials(cfg)
+	username, password, err := c.getCredentials(cfg.Workspace.VCenterIP)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	vmClient, restClient, err := newClient(ctx, cfg, username, password)
 	if err != nil {
 		if strings.Index(username, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(0)
 		}
 
 		if strings.Index(password, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(0)
 		}
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(1)
-		return nil, nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+		return nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
 	} else {
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
@@ -133,20 +147,29 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 	}
 
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient, restClient, nil
+	checkContext := &check.CheckContext{
+		Context:       ctx,
+		VMConfig:      cfg,
+		VMClient:      vmClient.Client,
+		GovmomiClient: vmClient,
+		TagManager:    vapitags.NewManager(restClient),
+		// Each check run gets its own cache
+		Cache: cache.NewCheckCache(vmClient.Client),
+	}
+	return checkContext, nil
 }
 
-func (c *vSphereChecker) getCredentials(cfg *vsphere.VSphereConfig) (string, string, error) {
+func (c *vSphereChecker) getCredentials(vCenterAddress string) (string, string, error) {
 	secret, err := c.controller.secretLister.Secrets(operatorNamespace).Get(cloudCredentialsSecretName)
 	if err != nil {
 		return "", "", err
 	}
-	userKey := cfg.Workspace.VCenterIP + "." + "username"
+	userKey := vCenterAddress + "." + "username"
 	username, ok := secret.Data[userKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, userKey)
 	}
-	passwordKey := cfg.Workspace.VCenterIP + "." + "password"
+	passwordKey := vCenterAddress + "." + "password"
 	password, ok := secret.Data[passwordKey]
 	if !ok {
 		return "", "", fmt.Errorf("error parsing secret %q: key %q not found", cloudCredentialsSecretName, passwordKey)
@@ -278,34 +301,33 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 }
 
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
-	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel := context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 
-	// Find datastore
-	finder := find.NewFinder(checkContext.VMClient, false)
-	dc, err := finder.Datacenter(tctx, checkContext.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access Datacenter %s: %s", checkContext.VMConfig.Workspace.Datacenter, err)
+	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
+	if vmUUID == "" {
+		return nil, fmt.Errorf("VMUUID is not set for node %s", node.Name)
 	}
 
 	// Find VM reference in the datastore, by UUID
-	s := object.NewSearchIndex(dc.Client())
-	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
-	defer cancel()
-	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
+	s := object.NewSearchIndex(checkContext.VMClient)
+
+	// datacenter can be nil...
+	svm, err := s.FindByUuid(tctx, nil, vmUUID, true, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find VM by UUID %s: %s", vmUUID, err)
 	}
+
 	if svm == nil {
-		return nil, fmt.Errorf("unable to find VM by UUID %s", vmUUID)
+		return nil, fmt.Errorf("failed to find VM by UUID %s", vmUUID)
 	}
 
 	// Find VM properties
 	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
-	defer cancel()
+
 	var o mo.VirtualMachine
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
+	defer cancel()
 	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load VM %s: %s", node.Name, err)
@@ -332,7 +354,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 
 	insecure := cfg.Global.InsecureFlag
 
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
 

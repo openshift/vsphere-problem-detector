@@ -17,11 +17,13 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
 	storagelister "k8s.io/client-go/listers/storage/v1"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 )
 
@@ -34,7 +36,10 @@ type vSphereProblemDetectorController struct {
 	pvLister             corelister.PersistentVolumeLister
 	scLister             storagelister.StorageClassLister
 	cloudConfigMapLister corelister.ConfigMapLister
-	eventRecorder        events.Recorder
+
+	metricsCollector *metrics.Collector
+
+	eventRecorder events.Recorder
 
 	// List of checks to perform (useful for unit-tests: replace with a dummy check).
 	clusterChecks map[string]check.ClusterCheck
@@ -95,6 +100,9 @@ func NewVSphereProblemDetectorController(
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
+
+	collector := metrics.NewMetricsCollector()
+
 	c := &vSphereProblemDetectorController{
 		operatorClient:       operatorClient,
 		kubeClient:           kubeClient,
@@ -104,6 +112,7 @@ func NewVSphereProblemDetectorController(
 		scLister:             scInformer.Lister(),
 		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
 		infraLister:          configInformer.Lister(),
+		metricsCollector:     collector,
 		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
 		clusterChecks:        check.DefaultClusterChecks,
 		nodeChecks:           check.DefaultNodeChecks,
@@ -111,6 +120,8 @@ func NewVSphereProblemDetectorController(
 		checkerFunc:          newVSphereChecker,
 		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
+	legacyregistry.CustomMustRegister(collector)
+
 	return factory.New().WithSync(c.sync).WithSyncDegradedOnError(operatorClient).WithInformers(
 		configInformer.Informer(),
 		secretInformer.Informer(),

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -68,7 +69,7 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 		This:   *ctx.VMClient.ServiceContent.PerfManager,
 		Entity: vm.ManagedEntity.Reference(),
 	}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfList, err := methods.QueryAvailablePerfMetric(tctx, ctx.VMClient.RoundTripper, &perf)
@@ -90,7 +91,7 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 		CounterId: counterIds,
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfCounters, err := methods.QueryPerfCounter(tctx, ctx.VMClient.RoundTripper, &perfCounter)
@@ -152,7 +153,7 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		QuerySpec: metricsSpec,
 	}
 
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfQueryRes, err := methods.QueryPerf(tctx, ctx.VMClient.RoundTripper, &perfQueryReq)

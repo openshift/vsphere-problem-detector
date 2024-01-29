@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"k8s.io/component-base/metrics/legacyregistry"
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	basemetrics "k8s.io/component-base/metrics"
 )
 
 func TestCollectNodeESXiVersion(t *testing.T) {
@@ -40,26 +42,28 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Stage
-			check := CollectNodeESXiVersion{
-				lastMetricEmission: map[[2]string]int{},
+			check := CollectNodeESXiVersion{}
+			kubeClient := &testlib.FakeKubeClient{
+				Nodes: testlib.DefaultNodes(),
 			}
-			kubeClient := &fakeKubeClient{
-				nodes: defaultNodes(),
-			}
-			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx, cleanup, err := SetupSimulator(kubeClient, testlib.DefaultModel)
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
 			defer cleanup()
+			collector := metrics.NewMetricsCollector()
+			ctx.MetricsCollector = collector
 
 			// Set esxi version of the only host.
-			err = customizeHostVersion(defaultHostId, test.esxiVersion, test.esxiApiversion)
+			err = testlib.CustomizeHostVersion(testlib.DefaultHostId, test.esxiVersion, test.esxiApiversion)
 			if err != nil {
 				t.Fatalf("Failed to customize host: %s", err)
 			}
 
 			// Reset metrics from previous tests. Note: the tests can't run in parallel!
-			legacyregistry.Reset()
+			// legacyregistry.Reset()
+			customRegistry := basemetrics.NewKubeRegistry()
+			customRegistry.CustomMustRegister(collector)
 
 			// Act - simulate loop through all nodes
 			err = check.StartCheck()
@@ -67,8 +71,8 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 				t.Errorf("StartCheck failed: %s", err)
 			}
 
-			for _, node := range kubeClient.nodes {
-				vm, err := getVM(ctx, node)
+			for _, node := range kubeClient.Nodes {
+				vm, err := testlib.GetVM(ctx.VMClient, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
@@ -79,9 +83,10 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			}
 
 			check.FinishCheck(ctx)
+			collector.FinishedAllChecks()
 
 			// Assert
-			if err := testutil.GatherAndCompare(legacyregistry.DefaultGatherer, strings.NewReader(test.expectedMetrics), "vsphere_esxi_version_total"); err != nil {
+			if err := testutil.GatherAndCompare(customRegistry, strings.NewReader(test.expectedMetrics), "vsphere_esxi_version_total"); err != nil {
 				t.Errorf("Unexpected metric: %s", err)
 			}
 		})
