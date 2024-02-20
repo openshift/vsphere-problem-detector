@@ -85,7 +85,22 @@ func (c *vSphereCache) getDatacenterLocked(ctx context.Context, dcName string) (
 	finder := find.NewFinder(c.vmClient, false)
 	dcObject, err := finder.Datacenter(tctx, dcName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
+		// If error is NotFoundError, lets try to get list of datacenters to add to error message.
+		if _, isNotFound := err.(*find.NotFoundError); isNotFound {
+			dcList, dclErr := finder.DatacenterList(tctx, "*")
+			if dclErr != nil {
+				// Something is not allowing us to check all datacenters. Default back to original err text.
+				return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
+			} else {
+				var dcNames []string
+				for _, dc := range dcList {
+					dcNames = append(dcNames, dc.Name())
+				}
+				return nil, fmt.Errorf("failed to access datacenter %s: %s.  Known datacenters: %s", dcName, err, dcNames)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
+		}
 	}
 
 	cdc := &cachedDatacenter{
