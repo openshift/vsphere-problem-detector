@@ -363,6 +363,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreNam
 			if tDS.Summary.Url == dsMo.Summary.Url {
 				return fmt.Errorf("datastore %s is part of %s datastore cluster", tDS.Summary.Name, ds.Summary.Name)
 			}
+			return fmt.Errorf("TEST: datastore %s is part of %s datastore cluster", tDS.Summary.Name, ds.Summary.Name)
 		}
 	}
 	klog.V(4).Infof("Checked datastore %s for SRDS - no problems found", dataStoreName)
