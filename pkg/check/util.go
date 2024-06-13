@@ -182,6 +182,10 @@ func ConvertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckConte
 				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
 					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
 				}
+
+				if len(checkContext.PlatformSpec.FailureDomains) == 0 {
+					addFailureDomainsToPlatformSpec(config, checkContext.PlatformSpec)
+				}
 			} else {
 				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
 			}
@@ -197,20 +201,23 @@ func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *oc
 			Server:      config.Workspace.VCenterIP,
 			Datacenters: datacenters,
 		})
-
-		platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
-			Name:   "",
-			Region: "",
-			Zone:   "",
-			Server: config.Workspace.VCenterIP,
-			Topology: ocpv1.VSpherePlatformTopology{
-				Datacenter:   config.Workspace.Datacenter,
-				Folder:       config.Workspace.Folder,
-				ResourcePool: config.Workspace.ResourcePoolPath,
-				Datastore:    config.Workspace.DefaultDatastore,
-			},
-		})
+		addFailureDomainsToPlatformSpec(config, platformSpec)
 	}
+}
+
+func addFailureDomainsToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "",
+		Region: "",
+		Zone:   "",
+		Server: config.Workspace.VCenterIP,
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter:   config.Workspace.Datacenter,
+			Folder:       config.Workspace.Folder,
+			ResourcePool: config.Workspace.ResourcePoolPath,
+			Datastore:    config.Workspace.DefaultDatastore,
+		},
+	})
 }
 
 func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
