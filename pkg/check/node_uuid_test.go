@@ -3,8 +3,9 @@ package check
 import (
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"github.com/vmware/govmomi/vim25/types"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
 func TestCheckNodeDiskUUID(t *testing.T) {
@@ -45,7 +46,12 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 
 			// Set VM disk.enableUUID
 			node := kubeClient.Nodes[0]
-			err = testlib.CustomizeVM(ctx.VMClient, node, &types.VirtualMachineConfigSpec{
+			vCenter, err := GetVCenter(ctx, node)
+			if err != nil {
+				t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+			}
+
+			err = testlib.CustomizeVM(vCenter.VMClient, node, &types.VirtualMachineConfigSpec{
 				ExtraConfig: []types.BaseOptionValue{
 					&types.OptionValue{
 						Key: "SET.config.flags.diskUuidEnabled", Value: test.uuidEnabled,
@@ -55,7 +61,7 @@ func TestCheckNodeDiskUUID(t *testing.T) {
 				t.Fatalf("Failed to customize node: %s", err)
 			}
 
-			vm, err := testlib.GetVM(ctx.VMClient, node)
+			vm, err := testlib.GetVM(vCenter.VMClient, node)
 			if err != nil {
 				t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 			}

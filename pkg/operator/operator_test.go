@@ -14,9 +14,10 @@ import (
 	opinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 func TestCheckForDeprecation(t *testing.T) {
@@ -144,7 +145,7 @@ type testvSphereChecker struct {
 
 func (d *testvSphereChecker) runChecks(ctx context.Context, info *util.ClusterInfo) (*ResultCollector, error) {
 	if d.vCenterVersion != "" && info != nil {
-		info.SetVCenterVersion(d.vCenterVersion, d.apiVersion)
+		info.SetVCenterVersion("dc0", d.vCenterVersion, d.apiVersion)
 	}
 	resultCollector := NewResultsCollector()
 	resultCollector.AddResult(checkResult{

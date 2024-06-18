@@ -5,22 +5,23 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/check/mock"
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
+	v1 "k8s.io/api/core/v1"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"github.com/openshift/vsphere-problem-detector/pkg/check/mock"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
-func getAuthManagerWithValidPrivileges(ctx *CheckContext, mockCtrl *gomock.Controller) (AuthManager, error) {
-	finder := find.NewFinder(ctx.VMClient)
+func getAuthManagerWithValidPrivileges(ctx *CheckContext, vCenter *VCenter, mockCtrl *gomock.Controller) (AuthManager, error) {
+	finder := find.NewFinder(vCenter.VMClient)
 
-	sessionMgr := session.NewManager(ctx.VMClient)
+	sessionMgr := session.NewManager(vCenter.VMClient)
 	userSession, err := sessionMgr.UserSession(ctx.Context)
 	if err != nil {
 		return nil, err
@@ -122,7 +123,7 @@ func clusterLevelPrivilegeCheck(ctx *CheckContext) error {
 
 func vmLevelPrivilegeCheck(ctx *CheckContext) error {
 	checks := []NodeCheck{&CheckComputeClusterPermissions{}, &CheckResourcePoolPermissions{}}
-	finder := find.NewFinder(ctx.VMClient)
+	finder := find.NewFinder(ctx.VCenters["dc0"].VMClient)
 	virtualMachines, err := finder.VirtualMachineList(ctx.Context, root)
 	if err != nil {
 		return err
@@ -163,7 +164,7 @@ func vmLevelPrivilegeCheck(ctx *CheckContext) error {
 			return err
 		}
 
-		err = check.CheckNode(ctx, nil, &vmMo)
+		err = check.CheckNode(ctx, &v1.Node{}, &vmMo)
 		if err != nil {
 			return err
 		}
@@ -188,14 +189,15 @@ func TestPermissionValidate(t *testing.T) {
 	}
 	defer cleanup()
 
-	finder := find.NewFinder(simctx.VMClient)
+	// All tests here assume 1 vcenter.
+	finder := find.NewFinder(simctx.VCenters["dc0"].VMClient)
 
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	sessionMgr := session.NewManager(simctx.VMClient)
+	sessionMgr := session.NewManager(simctx.VCenters["dc0"].VMClient)
 	userSession, err := sessionMgr.UserSession(simctx.Context)
 	if err != nil {
 		t.Error(err)
@@ -304,15 +306,20 @@ func TestPermissionValidate(t *testing.T) {
 		},
 	}
 
-	resourcePoolPath := simctx.VMConfig.Workspace.ResourcePoolPath
+	// Assume using legacy config.
+	if simctx.VMConfig.LegacyConfig == nil {
+		t.Errorf("StartCheck failed: %s", err)
+		return
+	}
+	resourcePoolPath := simctx.VMConfig.LegacyConfig.Workspace.ResourcePoolPath
 	for _, test := range tests {
-		simctx.AuthManager = test.authManager
+		simctx.VCenters["dc0"].AuthManager = test.authManager
 		t.Run(test.name, func(t *testing.T) {
 			// Set and unset the resource pool depending on the test
 			if !test.existingResourcePool {
-				simctx.VMConfig.Workspace.ResourcePoolPath = ""
+				simctx.VMConfig.LegacyConfig.Workspace.ResourcePoolPath = ""
 			} else {
-				simctx.VMConfig.Workspace.ResourcePoolPath = resourcePoolPath
+				simctx.VMConfig.LegacyConfig.Workspace.ResourcePoolPath = resourcePoolPath
 			}
 
 			err := test.validationMethod(simctx)
