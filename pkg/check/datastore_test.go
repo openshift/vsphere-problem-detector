@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
 var (
@@ -76,11 +77,11 @@ func TestCheckDefaultDatastore(t *testing.T) {
 			}
 			defer cleanup()
 
-			authManager, err := getAuthManagerWithValidPrivileges(ctx, mockCtrl)
+			authManager, err := getAuthManagerWithValidPrivileges(ctx, ctx.VCenters["dc0"], mockCtrl)
 			if err != nil {
 				t.Fatalf("authManager setup failed: %s", err)
 			}
-			ctx.AuthManager = authManager
+			ctx.VCenters["dc0"].AuthManager = authManager
 
 			// Act
 			err = CheckDefaultDatastore(ctx)
@@ -125,11 +126,11 @@ func TestCheckStorageClassesWithDatastore(t *testing.T) {
 			}
 			defer cleanup()
 
-			authManager, err := getAuthManagerWithValidPrivileges(ctx, mockCtrl)
+			authManager, err := getAuthManagerWithValidPrivileges(ctx, ctx.VCenters["dc0"], mockCtrl)
 			if err != nil {
 				t.Fatalf("authManager setup failed: %s", err)
 			}
-			ctx.AuthManager = authManager
+			ctx.VCenters["dc0"].AuthManager = authManager
 
 			// Reset metrics from previous tests. Note: the tests can't run in parallel!
 			legacyregistry.Reset()

@@ -4,10 +4,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/vmware/govmomi/vim25/mo"
+	basemetrics "k8s.io/component-base/metrics"
+
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
-	"github.com/prometheus/client_golang/prometheus/testutil"
-	basemetrics "k8s.io/component-base/metrics"
 )
 
 func TestCollectNodeESXiVersion(t *testing.T) {
@@ -72,7 +74,21 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			}
 
 			for _, node := range kubeClient.Nodes {
-				vm, err := testlib.GetVM(ctx.VMClient, node)
+				var vCenter *VCenter
+				var vm *mo.VirtualMachine
+
+				// Get vCenter
+				vCenter, err = GetVCenter(ctx, node)
+				if err != nil {
+					t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+				}
+
+				if err != nil {
+					t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+				}
+
+				// Get VM
+				vm, err := testlib.GetVM(vCenter.VMClient, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}

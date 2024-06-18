@@ -7,14 +7,15 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	basemetrics "k8s.io/component-base/metrics"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 var (
@@ -184,7 +185,16 @@ func TestVmCbtProperties(t *testing.T) {
 
 			// Run Test
 			for _, node := range test.kubeClient.Nodes {
-				vm, err := getVirtualMachine(simctx, nil, node.Spec.ProviderID)
+				var vCenter *VCenter
+				var vm *mo.VirtualMachine
+
+				// Get vCenter
+				vCenter, err = GetVCenter(simctx, node)
+				if err != nil {
+					t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+				}
+
+				vm, err = getVirtualMachine(simctx, vCenter, nil, node.Spec.ProviderID)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}
@@ -207,11 +217,11 @@ func TestVmCbtProperties(t *testing.T) {
 
 // getVirtualMachine returns VirtualMachine based on provider ID passed in.  This will
 // also load all properties related to VM using NodeProperties
-func getVirtualMachine(ctx *CheckContext, dc *object.Datacenter, providerID string) (*mo.VirtualMachine, error) {
+func getVirtualMachine(ctx *CheckContext, vCenter *VCenter, dc *object.Datacenter, providerID string) (*mo.VirtualMachine, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
-	s := object.NewSearchIndex(ctx.VMClient)
+	s := object.NewSearchIndex(vCenter.VMClient)
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(providerID, "vsphere://")))
 	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
 	if err != nil {
@@ -222,7 +232,7 @@ func getVirtualMachine(ctx *CheckContext, dc *object.Datacenter, providerID stri
 	}
 
 	// Load VM properties
-	vm := object.NewVirtualMachine(ctx.VMClient, svm.Reference())
+	vm := object.NewVirtualMachine(vCenter.VMClient, svm.Reference())
 
 	var vmo mo.VirtualMachine
 	err = vm.Properties(tctx, vm.Reference(), NodeProperties, &vmo)
