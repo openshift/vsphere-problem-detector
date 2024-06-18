@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CheckFolderPermissions tests that OCP has permissions to list volumes in
@@ -18,12 +19,18 @@ import (
 // it will be created by OCP on the first provisioning.
 func CheckFolderPermissions(ctx *CheckContext) error {
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
-		dc, err := getDatacenter(ctx, fd.Topology.Datacenter)
+		// Load vCenter for future use
+		vCenter := ctx.VCenters[fd.Server]
+		if vCenter == nil {
+			return fmt.Errorf("unable to check folder permissions for failure domain %v: vCenter %v no found", fd.Name, fd.Server)
+		}
+
+		dc, err := getDatacenter(ctx, vCenter, fd.Topology.Datacenter)
 		if err != nil {
 			return err
 		}
 
-		ds, err := getDataStoreByName(ctx, fd.Topology.Datastore, dc)
+		ds, err := getDataStoreByName(ctx, vCenter, fd.Topology.Datastore, dc)
 		if err != nil {
 			return fmt.Errorf("failed to access datastore %s: %s", fd.Topology.Datastore, err)
 		}

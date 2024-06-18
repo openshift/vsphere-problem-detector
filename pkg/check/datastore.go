@@ -112,9 +112,17 @@ func CheckStorageClasses(ctx *CheckContext) error {
 		for k, v := range sc.Parameters {
 			switch strings.ToLower(k) {
 			case dsParameter:
-				if err := checkDataStore(ctx, v, ctx.VMConfig.Workspace.Datacenter, dsTypes); err != nil {
-					klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
-					errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+				// Its like we can check multiple datacenters, but we assumed here only 1 value in the field.
+				if ctx.VMConfig.LegacyConfig != nil {
+					// Legacy will only have 1 vCenter.  Looping just to get first and only vCenter.
+					for _, vCenter := range ctx.VCenters {
+						if err := checkDataStore(ctx, vCenter, v, ctx.VMConfig.LegacyConfig.Workspace.Datacenter, dsTypes); err != nil {
+							klog.V(2).Infof("CheckStorageClasses: %s: %s", sc.Name, err)
+							errs = append(errs, fmt.Errorf("StorageClass %s: %s", sc.Name, err))
+						}
+					}
+				} else {
+					klog.Warning("CheckStorageClasses: unable to check datastore due to legacy config not in use.")
 				}
 			case dataStoreURL:
 				if err := checkDataStoreWithURL(ctx, v, dsTypes); err != nil {
@@ -151,9 +159,10 @@ func CheckDefaultDatastore(ctx *CheckContext) error {
 
 func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) error {
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		vCenter := ctx.VCenters[fd.Server]
 		dsName := fd.Topology.Datastore
 		dcName := fd.Topology.Datacenter
-		if err := checkDataStore(ctx, dsName, dcName, dsTypes); err != nil {
+		if err := checkDataStore(ctx, vCenter, dsName, dcName, dsTypes); err != nil {
 			return fmt.Errorf("defaultDatastore %s/%q in vSphere configuration: %s", dcName, dsName, err)
 		}
 	}
@@ -164,51 +173,55 @@ func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCol
 func checkStoragePolicy(ctx *CheckContext, policyName string, infrastructure *configv1.Infrastructure, dsTypes dataStoreTypeCollector) error {
 	klog.V(4).Infof("Checking storage policy %s", policyName)
 
-	pbm, err := getPolicy(ctx, policyName)
-	if err != nil {
-		return err
-	}
-	if len(pbm) == 0 {
-		return fmt.Errorf("error listing storage policy %s: policy not found", policyName)
-	}
-	if len(pbm) > 1 {
-		return fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm))
-	}
-
-	dataStores, err := getPolicyDatastores(ctx, pbm[0].GetPbmProfile().ProfileId)
-	if err != nil {
-		klog.V(2).Infof("unable to list policy datastores: %v", err)
-		// we may not have sufficient permission to list all datastores and hence we can ignore the check
-		return nil
-	}
-	klog.V(4).Infof("Policy %q is compatible with datastores %v", policyName, dataStores)
-
 	var errs []error
-	for _, dsInfo := range dataStores {
-		err := checkDataStoreWithURL(ctx, dsInfo.datastoreURL, dsTypes)
+
+	// Iterate through each vCenter
+	for _, vCenter := range ctx.VCenters {
+		pbm, err := getPolicy(ctx, vCenter, policyName)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
+			return err
+		}
+		if len(pbm) == 0 {
+			return fmt.Errorf("error listing storage policy %s: policy not found", policyName)
+		}
+		if len(pbm) > 1 {
+			return fmt.Errorf("error listing storage policy %s: multiple (%d) policies found", policyName, len(pbm))
+		}
+
+		dataStores, err := getPolicyDatastores(ctx, vCenter, pbm[0].GetPbmProfile().ProfileId)
+		if err != nil {
+			klog.V(2).Infof("unable to list policy datastores: %v", err)
+			// we may not have sufficient permission to list all datastores and hence we can ignore the check
+			return nil
+		}
+		klog.V(4).Infof("Policy %q is compatible with datastores %v", policyName, dataStores)
+
+		for _, dsInfo := range dataStores {
+			err := checkDataStoreWithURL(ctx, dsInfo.datastoreURL, dsTypes)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("storage policy %s: %s", policyName, err))
+			}
 		}
 	}
 	return JoinErrors(errs)
 }
 
 // checkStoragePolicy lists all datastores compatible with given policy.
-func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]datastoreInfo, error) {
+func getPolicyDatastores(ctx *CheckContext, vCenter *VCenter, profileID types.PbmProfileId) ([]datastoreInfo, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
-	pbmClient, err := pbm.NewClient(tctx, ctx.VMClient)
+	pbmClient, err := pbm.NewClient(tctx, vCenter.VMClient)
 	if err != nil {
 		return nil, fmt.Errorf("getPolicyDatastores: error creating pbm client: %v", err)
 	}
 
 	// Load all datastores in vSphere
 	kind := []string{"Datastore"}
-	m := view.NewManager(ctx.VMClient)
+	m := view.NewManager(vCenter.VMClient)
 
 	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
-	v, err := m.CreateContainerView(tctx, ctx.VMClient.ServiceContent.RootFolder, kind, true)
+	v, err := m.CreateContainerView(tctx, vCenter.VMClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
 		return nil, fmt.Errorf("getPolicyDatastores: error creating container view: %v", err)
 	}
@@ -269,10 +282,10 @@ func getPolicyDatastores(ctx *CheckContext, profileID types.PbmProfileId) ([]dat
 	return dataStores, nil
 }
 
-func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
+func getPolicy(ctx *CheckContext, vCenter *VCenter, name string) ([]types.BasePbmProfile, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
-	c, err := pbm.NewClient(tctx, ctx.VMClient)
+	c, err := pbm.NewClient(tctx, vCenter.VMClient)
 	if err != nil {
 		return nil, fmt.Errorf("error creating pbm client: %v", err)
 	}
@@ -309,18 +322,18 @@ func getPolicy(ctx *CheckContext, name string) ([]types.BasePbmProfile, error) {
 	return profileContent, nil
 }
 
-func checkDataStore(ctx *CheckContext, dsName string, dcName string, dsTypes dataStoreTypeCollector) error {
+func checkDataStore(ctx *CheckContext, vCenter *VCenter, dsName string, dcName string, dsTypes dataStoreTypeCollector) error {
 	klog.V(2).Infof("checking datastore %s for permissions", dsName)
 	var errs []error
-	dsMo, err := getDataStoreMoByName(ctx, dsName, dcName)
+	dsMo, err := getDataStoreMoByName(ctx, vCenter, dsName, dcName)
 	if err != nil {
 		return err
 	}
 
-	if err := checkForDatastoreCluster(ctx, dsMo, dsName, dcName, dsTypes); err != nil {
+	if err := checkForDatastoreCluster(ctx, vCenter, dsMo, dsName, dcName, dsTypes); err != nil {
 		errs = append(errs, err)
 	}
-	if err := checkDatastorePrivileges(ctx, dsName, dsMo.Reference()); err != nil {
+	if err := checkDatastorePrivileges(ctx, vCenter, dsName, dsMo.Reference()); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.NewAggregate(errs)
@@ -330,33 +343,33 @@ func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTyp
 	klog.V(2).Infof("checking datastore %s for permissions", dsURL)
 	var errs []error
 
-	dsMo, dcName, err := getDatastoreByURL(ctx, dsURL)
+	dsMo, dcName, vCenter, err := getDatastoreByURL(ctx, dsURL)
 	if err != nil {
 		return err
 	}
 
-	if err := checkForDatastoreCluster(ctx, dsMo, dsURL, dcName, dsTypes); err != nil {
+	if err := checkForDatastoreCluster(ctx, vCenter, dsMo, dsURL, dcName, dsTypes); err != nil {
 		errs = append(errs, err)
 	}
-	if err := checkDatastorePrivileges(ctx, dsURL, dsMo.Reference()); err != nil {
+	if err := checkDatastorePrivileges(ctx, vCenter, dsURL, dsMo.Reference()); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.NewAggregate(errs)
 }
 
-func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreName, dcName string, dsTypes dataStoreTypeCollector) error {
+func checkForDatastoreCluster(ctx *CheckContext, vCenter *VCenter, dsMo mo.Datastore, dataStoreName, dcName string, dsTypes dataStoreTypeCollector) error {
 	// Collect DS type
 	dsType := dsMo.Summary.Type
 	klog.V(4).Infof("Datastore %s is of type %s", dataStoreName, dsType)
 	dsTypes.addDataStore(dataStoreName, dsType)
 
-	content, err := ctx.Cache.GetStoragePods(ctx.Context)
+	content, err := vCenter.Cache.GetStoragePods(ctx.Context)
 	if err != nil {
 		return err
 	}
 	for _, ds := range content {
 		for _, child := range ds.Folder.ChildEntity {
-			tDS, err := getDatastore(ctx, dcName, child)
+			tDS, err := getDatastore(ctx, vCenter, dcName, child)
 			if err != nil {
 				// we may not have permissions to fetch unrelated datastores in OCP
 				// and hence we are going to ignore the error.

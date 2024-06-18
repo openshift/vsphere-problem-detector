@@ -146,33 +146,33 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 	return nil
 }
 
-func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
-	matchingDC, err := getDatacenter(ctx, dataCenterName)
+func checkDatacenterPrivileges(ctx *CheckContext, vCenter *VCenter, dataCenterName string) error {
+	matchingDC, err := getDatacenter(ctx, vCenter, dataCenterName)
 	if err != nil {
 		log.Logf("error getting datacenter %s: %v", dataCenterName, err)
 		return err
 	}
-	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
+	if err := comparePrivileges(ctx.Context, vCenter.Username, matchingDC.Reference(), vCenter.AuthManager, permissions[permissionDatacenter]); err != nil {
 		return fmt.Errorf("missing privileges for datacenter %s: %s", dataCenterName, err.Error())
 	}
 	return nil
 }
 
-func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissionGroup) error {
-	finder := find.NewFinder(ctx.VMClient)
+func checkFolderPrivileges(ctx *CheckContext, vCenter *VCenter, folderPath string, group permissionGroup) error {
+	finder := find.NewFinder(vCenter.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
 	if err != nil {
 		log.Logf("error getting folder %s: %v", folderPath, err)
 		return err
 	}
-	if err := comparePrivileges(ctx.Context, ctx.Username, folder.Reference(), ctx.AuthManager, permissions[group]); err != nil {
+	if err := comparePrivileges(ctx.Context, vCenter.Username, folder.Reference(), vCenter.AuthManager, permissions[group]); err != nil {
 		return fmt.Errorf("missing privileges for %s: %s", group, err.Error())
 	}
 	return nil
 }
 
-func checkDatastorePrivileges(ctx *CheckContext, dataStoreName string, dsRef types.ManagedObjectReference) error {
-	if err := comparePrivileges(ctx.Context, ctx.Username, dsRef, ctx.AuthManager, permissions[permissionDatastore]); err != nil { //
+func checkDatastorePrivileges(ctx *CheckContext, vCenter *VCenter, dataStoreName string, dsRef types.ManagedObjectReference) error {
+	if err := comparePrivileges(ctx.Context, vCenter.Username, dsRef, vCenter.AuthManager, permissions[permissionDatastore]); err != nil { //
 		return fmt.Errorf("missing privileges for datastore %s: %s", dataStoreName, err.Error())
 	}
 	return nil
@@ -193,35 +193,37 @@ func CheckAccountPermissions(ctx *CheckContext) error {
 	var errs []error
 
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
-		matchinDC, err := getDatacenter(ctx, fd.Topology.Datacenter)
+		vCenter := ctx.VCenters[fd.Server]
+
+		matchingDC, err := getDatacenter(ctx, vCenter, fd.Topology.Datacenter)
 		if err != nil {
 			return err
 		}
 
-		ds, err := getDataStoreByName(ctx, fd.Topology.Datastore, matchinDC)
+		ds, err := getDataStoreByName(ctx, vCenter, fd.Topology.Datastore, matchingDC)
 		if err != nil {
 			errs = append(errs, err)
 		}
 
 		if ds != nil {
-			err = checkDatastorePrivileges(ctx, fd.Topology.Datastore, ds.Reference())
+			err = checkDatastorePrivileges(ctx, vCenter, fd.Topology.Datastore, ds.Reference())
 			if err != nil {
 				errs = append(errs, err)
 			}
 		}
 
-		err = checkDatacenterPrivileges(ctx, fd.Topology.Datacenter)
+		err = checkDatacenterPrivileges(ctx, vCenter, fd.Topology.Datacenter)
 		if err != nil {
 			errs = append(errs, err)
 		}
 
-		err = checkFolderPrivileges(ctx, "/", permissionVcenter)
+		err = checkFolderPrivileges(ctx, vCenter, "/", permissionVcenter)
 		if err != nil {
 			errs = append(errs, err)
 		}
 
 		if fd.Topology.Folder != "" {
-			err = checkFolderPrivileges(ctx, fd.Topology.Folder, permissionFolder)
+			err = checkFolderPrivileges(ctx, vCenter, fd.Topology.Folder, permissionFolder)
 			if err != nil {
 				errs = append(errs, err)
 			}
