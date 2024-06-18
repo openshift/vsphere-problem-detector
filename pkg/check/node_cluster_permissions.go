@@ -24,8 +24,8 @@ func (c *CheckComputeClusterPermissions) StartCheck() error {
 	return nil
 }
 
-func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vm *mo.VirtualMachine, readOnly bool) error {
-	cluster, err := getComputeCluster(ctx, vm.Runtime.Host.Reference())
+func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *CheckContext, vCenter *VCenter, vm *mo.VirtualMachine, readOnly bool) error {
+	cluster, err := getComputeCluster(ctx, vCenter, vm.Runtime.Host.Reference())
 	if err != nil {
 		klog.Infof("compute cluster resource could not be obtained for %v", vm.Reference())
 		return nil
@@ -42,7 +42,7 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 	}
 	c.computeClusters[cluster.Name] = cluster
 
-	if err := comparePrivileges(ctx.Context, ctx.Username, cluster.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
+	if err := comparePrivileges(ctx.Context, vCenter.Username, cluster.Reference(), vCenter.AuthManager, permissions[permissionCluster]); err != nil {
 		return fmt.Errorf("missing privileges for compute cluster %s: %s", cluster.Name, err.Error())
 	}
 	return nil
@@ -52,12 +52,17 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 	var errs []error
 	readOnly := false
 
+	vCenterInfo, err := GetVCenter(ctx, node)
+	if err != nil {
+		return fmt.Errorf("unable to check node %s: %s", node.Name, err)
+	}
+
 	// If pre-existing resource pool was defined, only check cluster for read privilege
-	if ctx.VMConfig.Workspace.ResourcePoolPath != "" {
+	if ctx.VMConfig.LegacyConfig != nil && ctx.VMConfig.LegacyConfig.Workspace.ResourcePoolPath != "" {
 		readOnly = true
 	}
 
-	err := c.checkComputeClusterPrivileges(ctx, vm, readOnly)
+	err = c.checkComputeClusterPrivileges(ctx, vCenterInfo, vm, readOnly)
 	if err != nil {
 		errs = append(errs, err)
 	}

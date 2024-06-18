@@ -5,19 +5,19 @@ import (
 	"regexp"
 	"strings"
 
+	v1 "github.com/openshift/api/config/v1"
 	"github.com/pkg/errors"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
-
-	v1 "github.com/openshift/api/config/v1"
 )
 
 type validationContext struct {
 	reference           vim25types.ManagedObjectReference
 	regionTagCategoryID string
 	zoneTagCategoryID   string
+	vCenter             *VCenter
 }
 
 const (
@@ -30,9 +30,9 @@ const (
 
 // validateTagCategories will verify that the categories exist for the region
 // and zone tags.
-func validateTagCategories(ctx *CheckContext) (string, string, error) {
+func validateTagCategories(ctx *CheckContext, vCenter *VCenter) (string, string, error) {
 	klog.V(4).Info("Validating tag categories...")
-	categories, err := getCategories(ctx)
+	categories, err := getCategories(ctx, vCenter)
 	if err != nil {
 		return "", "", err
 	}
@@ -66,7 +66,7 @@ func validateTagCategories(ctx *CheckContext) (string, string, error) {
 func validateTagAttachment(ctx *CheckContext, vctx validationContext) error {
 	klog.V(2).Infof("Validating tags for %s.", vctx.reference)
 	referencesToCheck := []mo.Reference{vctx.reference}
-	ancestors, err := getAncestors(ctx, vctx.reference)
+	ancestors, err := getAncestors(ctx, vctx)
 	if err != nil {
 		klog.Error("Unable to get ancestors.")
 		return err
@@ -75,7 +75,7 @@ func validateTagAttachment(ctx *CheckContext, vctx validationContext) error {
 	for _, ancestor := range ancestors {
 		referencesToCheck = append(referencesToCheck, ancestor.Reference())
 	}
-	attachedTags, err := getAttachedTagsOnObjects(ctx, referencesToCheck)
+	attachedTags, err := getAttachedTagsOnObjects(ctx, &vctx, referencesToCheck)
 	if err != nil {
 		klog.Error("Unable to get attached tags.")
 		return err
@@ -148,14 +148,26 @@ func CheckZoneTags(ctx *CheckContext) error {
 
 	if len(fds) > 1 {
 		// Validate tags exist for cluster
-		regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx)
-		if err != nil {
-			return fmt.Errorf("Multi-Zone support: %s", err)
+		vCenterRegionCategories := make(map[string]string)
+		vCenterZoneCategories := make(map[string]string)
+		for _, vCenter := range ctx.VCenters {
+			regionTagCategoryId, zoneTagCategoryId, err := validateTagCategories(ctx, vCenter)
+
+			if err != nil {
+				return fmt.Errorf("Multi-Zone support: %s", err)
+			}
+			klog.V(4).Infof("Region: %s  Zone: %s", regionTagCategoryId, zoneTagCategoryId)
+			vCenterRegionCategories[vCenter.VCenterName] = regionTagCategoryId
+			vCenterZoneCategories[vCenter.VCenterName] = zoneTagCategoryId
 		}
-		klog.V(4).Infof("Region: %s  Zone: %s", regionTagCategoryId, zoneTagCategoryId)
 
 		// Iterate through each FailureDomain and check tags.
 		for _, fd := range fds {
+			// Load vCenter for future use
+			vCenter := ctx.VCenters[fd.Server]
+			if vCenter == nil {
+				return fmt.Errorf("Multi-Zone support: unable to check zone tags: vCenter %s for failure domain %s not found in cloud provider config", fd.Server, fd.Name)
+			}
 
 			// Validate compute cluster is defined correctly
 			vsphereField := field.NewPath("platform").Child("vsphere")
@@ -172,14 +184,14 @@ func CheckZoneTags(ctx *CheckContext) error {
 
 			// Get DC first to initialize client
 			klog.V(4).Info("Getting datacenter")
-			datacenter, err := getDatacenter(ctx, fd.Topology.Datacenter)
+			datacenter, err := getDatacenter(ctx, vCenter, fd.Topology.Datacenter)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("unable to get datacenter %s for failure domain %s: %s", fd.Topology.Datacenter, fd.Name, err))
 				continue
 			}
 
 			// Get the ClusterComputeResource
-			computeResourceMo, err := getClusterComputeResource(ctx, computeClusterName, datacenter)
+			computeResourceMo, err := getClusterComputeResource(ctx, vCenter, computeClusterName, datacenter)
 			klog.V(4).Infof("ClusterComputeResource: %s", computeResourceMo)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("unable to get ClusterComputeResource %s for failure domain %s: %s", computeClusterName, fd.Name, err))
@@ -188,8 +200,9 @@ func CheckZoneTags(ctx *CheckContext) error {
 
 			validationCtx := validationContext{
 				reference:           computeResourceMo.Reference(),
-				regionTagCategoryID: regionTagCategoryId,
-				zoneTagCategoryID:   zoneTagCategoryId,
+				regionTagCategoryID: vCenterRegionCategories[fd.Server],
+				vCenter:             ctx.VCenters[fd.Server],
+				zoneTagCategoryID:   vCenterZoneCategories[fd.Server],
 			}
 
 			// Validate tags for the current ComputeCluster

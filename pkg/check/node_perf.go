@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CheckNodeDiskPerf Checks node performance of master nodes.
@@ -56,7 +57,7 @@ var (
 	}
 )
 
-func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualMachine) error {
+func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vCenter *VCenter, vm *mo.VirtualMachine) error {
 	buildCounterIDMapLock.Lock()
 	defer buildCounterIDMapLock.Unlock()
 
@@ -66,13 +67,13 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 	var counterIds []int32
 
 	perf := types.QueryAvailablePerfMetric{
-		This:   *ctx.VMClient.ServiceContent.PerfManager,
+		This:   *vCenter.VMClient.ServiceContent.PerfManager,
 		Entity: vm.ManagedEntity.Reference(),
 	}
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
-	perfList, err := methods.QueryAvailablePerfMetric(tctx, ctx.VMClient.RoundTripper, &perf)
+	perfList, err := methods.QueryAvailablePerfMetric(tctx, vCenter.VMClient.RoundTripper, &perf)
 	if err != nil {
 		klog.V(2).Infof("error getting available performance metrics: %s", err.Error())
 		return err
@@ -87,14 +88,14 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 	}
 
 	perfCounter := types.QueryPerfCounter{
-		This:      *ctx.VMClient.ServiceContent.PerfManager,
+		This:      *vCenter.VMClient.ServiceContent.PerfManager,
 		CounterId: counterIds,
 	}
 
 	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
-	perfCounters, err := methods.QueryPerfCounter(tctx, ctx.VMClient.RoundTripper, &perfCounter)
+	perfCounters, err := methods.QueryPerfCounter(tctx, vCenter.VMClient.RoundTripper, &perfCounter)
 	if err != nil {
 		return err
 	}
@@ -108,8 +109,8 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 	return nil
 }
 
-func (c *CheckNodeDiskPerf) GetPerfMetric(ctx *CheckContext, vm *mo.VirtualMachine, metricName string) (*types.PerfMetricId, error) {
-	err := c.BuildCounterIdMap(ctx, vm)
+func (c *CheckNodeDiskPerf) GetPerfMetric(ctx *CheckContext, vCenter *VCenter, vm *mo.VirtualMachine, metricName string) (*types.PerfMetricId, error) {
+	err := c.BuildCounterIdMap(ctx, vCenter, vm)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +135,13 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 
 	klog.V(4).Infof("performing metric check of: %s", mcd.metricName)
 
-	perfMetricID, err := c.GetPerfMetric(ctx, vm, mcd.metricName)
+	// Get vCenter
+	vCenter, err := GetVCenter(ctx, node)
+	if err != nil {
+		return fmt.Errorf("unable to perform metric check of %s: %s", node.Name, err)
+	}
+
+	perfMetricID, err := c.GetPerfMetric(ctx, vCenter, vm, mcd.metricName)
 	if err != nil {
 		klog.V(2).Infof("error getting perf metric id: %s", err.Error())
 		// returning nil as metric may legitimately not be present for the machine
@@ -149,14 +156,14 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 	}}
 
 	perfQueryReq := types.QueryPerf{
-		This:      *ctx.VMClient.ServiceContent.PerfManager,
+		This:      *vCenter.VMClient.ServiceContent.PerfManager,
 		QuerySpec: metricsSpec,
 	}
 
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
-	perfQueryRes, err := methods.QueryPerf(tctx, ctx.VMClient.RoundTripper, &perfQueryReq)
+	perfQueryRes, err := methods.QueryPerf(tctx, vCenter.VMClient.RoundTripper, &perfQueryReq)
 	if err != nil {
 		klog.V(2).Infof("error querying perf metrics: %s", err.Error())
 		// returning nil to prevent flagging this test as failed due to a failure to pull metric

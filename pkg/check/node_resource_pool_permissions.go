@@ -26,8 +26,8 @@ func (c *CheckResourcePoolPermissions) StartCheck() error {
 	return nil
 }
 
-func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vm *mo.VirtualMachine) error {
-	resourcePool, resourcePoolPath, err := getResourcePool(ctx, vm.Reference())
+func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckContext, vCenter *VCenter, vm *mo.VirtualMachine) error {
+	resourcePool, resourcePoolPath, err := getResourcePool(ctx, vCenter, vm.Reference())
 	if err != nil {
 		klog.Infof("resource pool could not be obtained for %v", vm.Reference())
 		return nil
@@ -38,7 +38,7 @@ func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckCon
 	}
 	c.resourcePools[resourcePoolPath] = resourcePool
 
-	if err := comparePrivileges(ctx.Context, ctx.Username, resourcePool.Reference(), ctx.AuthManager, permissions[permissionCluster]); err != nil {
+	if err := comparePrivileges(ctx.Context, vCenter.Username, resourcePool.Reference(), vCenter.AuthManager, permissions[permissionCluster]); err != nil {
 		return fmt.Errorf("missing privileges for resource pool %s: %s", resourcePoolPath, err.Error())
 	}
 
@@ -48,8 +48,14 @@ func (c *CheckResourcePoolPermissions) checkResourcePoolPrivileges(ctx *CheckCon
 func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Node, vm *mo.VirtualMachine) error {
 	var errs []error
 
+	// Get vCenter
+	vCenter, err := GetVCenter(ctx, node)
+	if err != nil {
+		return fmt.Errorf("unable to check node %s: %s", node.Name, err)
+	}
+
 	if vm.ResourcePool != nil {
-		rpObj := object.NewResourcePool(ctx.VMClient, *vm.ResourcePool)
+		rpObj := object.NewResourcePool(vCenter.VMClient, *vm.ResourcePool)
 
 		if rpObj != nil {
 			rpName, err := rpObj.ObjectName(ctx.Context)
@@ -62,7 +68,7 @@ func (c *CheckResourcePoolPermissions) CheckNode(ctx *CheckContext, node *v1.Nod
 				return nil
 			}
 
-			err = c.checkResourcePoolPrivileges(ctx, vm)
+			err = c.checkResourcePoolPrivileges(ctx, vCenter, vm)
 			if err != nil {
 				errs = append(errs, err)
 			}
