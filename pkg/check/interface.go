@@ -27,6 +27,7 @@ var (
 		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
 		"CheckZoneTags":           CheckZoneTags,
+		"CheckInfraConfig":        CheckInfraConfig,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
