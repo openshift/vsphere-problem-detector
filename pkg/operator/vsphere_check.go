@@ -65,7 +65,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 		sessionMgr := session.NewManager(vc.VMClient)
 		user, err := sessionMgr.UserSession(ctx)
 		if err != nil {
-			return resultCollector, err
+			return resultCollector, fmt.Errorf("unable to run checks: %v", err)
 		}
 
 		vc.AuthManager = object.NewAuthorizationManager(vc.VMClient)
@@ -125,7 +125,7 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 	for _, vCenter := range cfg.Config.VirtualCenter {
 		username, password, err := c.getCredentials(vCenter.VCenterIP)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get credentials to %s: %v", vCenter.VCenterIP, err)
 		}
 
 		vmClient, restClient, err := newClient(ctx, vCenter, username, password)

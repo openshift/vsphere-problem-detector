@@ -27,7 +27,7 @@ func CheckFolderPermissions(ctx *CheckContext) error {
 
 		dc, err := getDatacenter(ctx, vCenter, fd.Topology.Datacenter)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to check folder permissions for datacenter %s: %v", fd.Topology.Datacenter, err)
 		}
 
 		ds, err := getDataStoreByName(ctx, vCenter, fd.Topology.Datastore, dc)
