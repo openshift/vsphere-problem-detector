@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	lmetric "github.com/openshift/vsphere-problem-detector/pkg/metrics"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
+
+	lmetric "github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CollectNodeESXiVersion emits metric with version of each ESXi host that runs at least a single VM with node.
@@ -38,13 +39,19 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 		return nil
 	}
 
+	// Get vCenter location
+	vCenter, err := GetVCenter(ctx, node)
+	if err != nil {
+		return fmt.Errorf("error checking node %s: %s", node.Name, err)
+	}
+
 	// Load the HostSystem properties
-	host := object.NewHostSystem(ctx.VMClient, *hostRef)
+	host := object.NewHostSystem(vCenter.VMClient, *hostRef)
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	var o mo.HostSystem
 
-	err := host.Properties(tctx, host.Reference(), []string{"name", "config.product"}, &o)
+	err = host.Properties(tctx, host.Reference(), []string{"name", "config.product"}, &o)
 	if err != nil {
 		return fmt.Errorf("failed to load ESXi host %s for node %s: %s", hostName, node.Name, err)
 	}

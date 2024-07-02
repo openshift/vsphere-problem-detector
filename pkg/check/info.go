@@ -37,11 +37,13 @@ func CollectClusterInfo(ctx *CheckContext) error {
 }
 
 func collectVCenterInfo(ctx *CheckContext) {
-	version := ctx.VMClient.ServiceContent.About.Version
-	apiVersion := ctx.VMClient.ServiceContent.About.ApiVersion
-	build := ctx.VMClient.ServiceContent.About.Build
-	uuid := ctx.VMClient.ServiceContent.About.InstanceUuid
-	klog.V(2).Infof("vCenter version is %s, apiVersion is %s and build is %s", version, apiVersion, build)
-	ctx.ClusterInfo.SetVCenterVersion(version, apiVersion)
-	vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid, build).Set(1.0)
+	for _, vCenter := range ctx.VCenters {
+		version := vCenter.VMClient.ServiceContent.About.Version
+		apiVersion := vCenter.VMClient.ServiceContent.About.ApiVersion
+		build := vCenter.VMClient.ServiceContent.About.Build
+		uuid := vCenter.VMClient.ServiceContent.About.InstanceUuid
+		klog.V(2).Infof("vCenter %s version is %s, apiVersion is %s and build is %s", vCenter.VCenterName, version, apiVersion, build)
+		ctx.ClusterInfo.SetVCenterVersion(vCenter.VCenterName, version, apiVersion)
+		vCenterInfoMetric.WithLabelValues(version, apiVersion, uuid, build).Set(1.0)
+	}
 }

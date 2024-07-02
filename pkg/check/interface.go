@@ -3,18 +3,16 @@ package check
 import (
 	"context"
 
+	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/govmomi"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/legacy-cloud-providers/vsphere"
 
-	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
-
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
@@ -29,6 +27,7 @@ var (
 		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
 		"CheckZoneTags":           CheckZoneTags,
+		"CheckInfraConfig":        CheckInfraConfig,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
@@ -59,19 +58,25 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
-	Cache            cache.VSphereCache
 	MetricsCollector *metrics.Collector
 	Context          context.Context
-	VMConfig         *vsphere.VSphereConfig
-	GovmomiClient    *govmomi.Client
-	VMClient         *vim25.Client
-	TagManager       *vapitags.Manager
-	Username         string
-	AuthManager      AuthManager
+	VMConfig         *util.VSphereConfig
+	VCenters         map[string]*VCenter
 	KubeClient       KubeClient
 	ClusterInfo      *util.ClusterInfo
 	//Infra            *ocpv1.Infrastructure
 	PlatformSpec *ocpv1.VSpherePlatformSpec
+}
+
+// VCenter contains all specific vCenter information needed for performing checks
+type VCenter struct {
+	AuthManager   AuthManager
+	Cache         cache.VSphereCache
+	GovmomiClient *govmomi.Client
+	TagManager    *vapitags.Manager
+	Username      string
+	VCenterName   string
+	VMClient      *vim25.Client
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.
