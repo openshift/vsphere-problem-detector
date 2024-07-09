@@ -84,6 +84,12 @@ func (c *ClusterInfo) GetHardwareVersion() map[string]int {
 func (c *ClusterInfo) SetVCenterVersion(hostname, version, apiVersion string) {
 	c.esxiVersionsLock.Lock()
 	defer c.esxiVersionsLock.Unlock()
+
+	// Add hostname to list if we haven't already set in version field
+	if _, ok := c.vcenterVersion[hostname]; !ok {
+		c.vcenterHostnames = append(c.vcenterHostnames, hostname)
+	}
+
 	c.vcenterVersion[hostname] = version
 	c.vcenterAPIVersion[hostname] = apiVersion
 }

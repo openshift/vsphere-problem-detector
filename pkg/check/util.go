@@ -305,6 +305,10 @@ func GetVCenter(checkContext *CheckContext, node *v1.Node) (*VCenter, error) {
 		}
 	} else {
 		// Platform spec is not set.  This is old behavior before FDs.  Return only FD.
+		klog.V(2).Infof("Infrastructure is not configured.  Returning first vCenter from context.")
+		if len(checkContext.VCenters) > 1 {
+			return nil, fmt.Errorf("invalid number of configured vCenters detected: %d.  Expected only 1.", len(checkContext.VCenters))
+		}
 		for index := range checkContext.VCenters {
 			return checkContext.VCenters[index], nil
 		}

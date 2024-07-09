@@ -160,6 +160,9 @@ func CheckDefaultDatastore(ctx *CheckContext) error {
 func checkDefaultDatastoreWithDSType(ctx *CheckContext, dsTypes dataStoreTypeCollector) error {
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
 		vCenter := ctx.VCenters[fd.Server]
+		if vCenter == nil {
+			return fmt.Errorf("defaultDatastore check failed due to missing vCenter configuration for infrastructure failure domain: %s", fd.Name)
+		}
 		dsName := fd.Topology.Datastore
 		dcName := fd.Topology.Datacenter
 		if err := checkDataStore(ctx, vCenter, dsName, dcName, dsTypes); err != nil {

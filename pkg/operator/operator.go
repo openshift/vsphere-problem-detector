@@ -104,7 +104,7 @@ func NewVSphereProblemDetectorController(
 	clusterCSIDriverInformer clustercsidriverinformer.ClusterCSIDriverInformer) factory.Controller {
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
-	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	cloudConfigMapInformer := namespacedInformer.InformersFor(util.CloudConfigNamespace).Core().V1().ConfigMaps()
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()

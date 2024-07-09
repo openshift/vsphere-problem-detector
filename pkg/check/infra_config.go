@@ -6,6 +6,8 @@ import (
 	v1 "github.com/openshift/api/config/v1"
 	"k8s.io/cloud-provider-vsphere/pkg/common/config"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CheckInfraConfig will attempt to validate that the infrastructure config is correctly configured.
@@ -45,8 +47,8 @@ func checkVCenters(ctx *CheckContext, infra *v1.Infrastructure) []error {
 	vSphereSpec := infra.Spec.PlatformSpec.VSphere
 	cfg := ctx.VMConfig.Config
 	if len(vSphereSpec.VCenters) != len(cfg.VirtualCenter) {
-		err := fmt.Errorf("Infra-Config: vCenter counts do not match.  Infra has %d %v and cloud provider config has %d %v",
-			len(vSphereSpec.VCenters), getInfraVCenterNames(vSphereSpec), len(cfg.VirtualCenter), getProviderConfigVCenterNames(cfg))
+		err := fmt.Errorf("Infra-Config: Infrastructure instance and cloud provider ConfigMap %s/%s do not match.  Infrastructure has %d vCenters %v and the ConfigMap has %d vCenters %v",
+			util.CloudConfigNamespace, infra.Spec.CloudConfig.Name, len(vSphereSpec.VCenters), getInfraVCenterNames(vSphereSpec), len(cfg.VirtualCenter), getProviderConfigVCenterNames(cfg))
 		errs = append(errs, err)
 
 	} else {
@@ -54,8 +56,8 @@ func checkVCenters(ctx *CheckContext, infra *v1.Infrastructure) []error {
 		for _, vCenter := range vSphereSpec.VCenters {
 			foundVC := cfg.VirtualCenter[vCenter.Server]
 			if foundVC == nil {
-				err := fmt.Errorf("Infra-Config: vCenter values do not match.  Infra has %v and cloud provider config has %v",
-					getInfraVCenterNames(vSphereSpec), getProviderConfigVCenterNames(cfg))
+				err := fmt.Errorf("Infra-Config: Infrastructure instance and cloud provider ConfigMap %s/%s do not match.  Infrastructure has %v and the ConfigMap has %v",
+					util.CloudConfigNamespace, infra.Spec.CloudConfig.Name, getInfraVCenterNames(vSphereSpec), getProviderConfigVCenterNames(cfg))
 				errs = append(errs, err)
 			}
 		}
@@ -72,7 +74,7 @@ func checkFailureDomains(ctx *CheckContext, infra *v1.Infrastructure) []error {
 	vSphereSpec := infra.Spec.PlatformSpec.VSphere
 	for _, fd := range vSphereSpec.FailureDomains {
 		if !containsString(getInfraVCenterNames(vSphereSpec), fd.Server) {
-			err := fmt.Errorf("Infra-Config: failure domain %v references the server %v but is not found in the vCenter section %v",
+			err := fmt.Errorf("Infra-Config: Infrastructure failure domain %v references the server %v but is not found in the vCenter section %v",
 				fd.Name, fd.Server, getInfraVCenterNames(vSphereSpec))
 			errs = append(errs, err)
 		} else {
@@ -84,7 +86,7 @@ func checkFailureDomains(ctx *CheckContext, infra *v1.Infrastructure) []error {
 	// Verify all vCenters were referenced by failure domains
 	for _, vCenter := range vSphereSpec.VCenters {
 		if foundVCs[vCenter.Server] != true {
-			err := fmt.Errorf("Infra-Config: vCenter %v is configured in the infrastructure resource but not used by any failure domains",
+			err := fmt.Errorf("Infra-Config: vCenter %v is configured in the infrastructure instance but not used by any failure domains",
 				vCenter.Server)
 			errs = append(errs, err)
 		}

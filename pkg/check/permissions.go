@@ -194,6 +194,9 @@ func CheckAccountPermissions(ctx *CheckContext) error {
 
 	for _, fd := range ctx.PlatformSpec.FailureDomains {
 		vCenter := ctx.VCenters[fd.Server]
+		if vCenter == nil {
+			return fmt.Errorf("unable to check permissions.  vCenter %v not found", fd.Server)
+		}
 
 		matchingDC, err := getDatacenter(ctx, vCenter, fd.Topology.Datacenter)
 		if err != nil {

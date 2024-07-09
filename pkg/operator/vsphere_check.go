@@ -60,6 +60,8 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	}()
 
 	// Get the fully-qualified vsphere username
+	authMgrs := make(map[string]check.AuthManager)
+	userNames := make(map[string]string)
 	for index := range checkContext.VCenters {
 		vc := checkContext.VCenters[index]
 		sessionMgr := session.NewManager(vc.VMClient)
@@ -68,8 +70,8 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 			return resultCollector, fmt.Errorf("unable to run checks: %v", err)
 		}
 
-		vc.AuthManager = object.NewAuthorizationManager(vc.VMClient)
-		vc.Username = user.UserName
+		authMgrs[vc.VCenterName] = object.NewAuthorizationManager(vc.VMClient)
+		userNames[vc.VCenterName] = user.UserName
 	}
 
 	infra, err := v.controller.GetInfrastructure(ctx)
@@ -78,6 +80,11 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	}
 
 	checkContext.Context = ctx
+	for index := range checkContext.VCenters {
+		vc := checkContext.VCenters[index]
+		vc.AuthManager = authMgrs[vc.VCenterName]
+		vc.Username = userNames[vc.VCenterName]
+	}
 	checkContext.KubeClient = v.controller
 	checkContext.ClusterInfo = clusterInfo
 	checkContext.MetricsCollector = v.controller.metricsCollector
@@ -213,16 +220,16 @@ func (c *vSphereChecker) getVSphereConfig(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("unsupported platform: %s", infra.Status.PlatformStatus.Type)
 	}
 
-	cloudConfigMap, err := c.controller.cloudConfigMapLister.ConfigMaps(cloudConfigNamespace).Get(infra.Spec.CloudConfig.Name)
+	cloudConfigMap, err := c.controller.cloudConfigMapLister.ConfigMaps(util.CloudConfigNamespace).Get(infra.Spec.CloudConfig.Name)
 	if err != nil {
 		return "", fmt.Errorf("failed to get cluster config: %s", err)
 	}
 
 	cfgString, found := cloudConfigMap.Data[infra.Spec.CloudConfig.Key]
 	if !found {
-		return "", fmt.Errorf("cluster config %s/%s does not contain key %q", cloudConfigNamespace, infra.Spec.CloudConfig.Name, infra.Spec.CloudConfig.Key)
+		return "", fmt.Errorf("cluster config %s/%s does not contain key %q", util.CloudConfigNamespace, infra.Spec.CloudConfig.Name, infra.Spec.CloudConfig.Key)
 	}
-	klog.V(4).Infof("Got ConfigMap %s/%s with config:\n%s", cloudConfigNamespace, infra.Spec.CloudConfig.Name, cfgString)
+	klog.V(4).Infof("Got ConfigMap %s/%s with config:\n%s", util.CloudConfigNamespace, infra.Spec.CloudConfig.Name, cfgString)
 
 	return cfgString, nil
 }
@@ -368,7 +375,6 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 func parseConfig(data string) (*util.VSphereConfig, error) {
 	cfg := &util.VSphereConfig{}
 	err := cfg.LoadConfig(data)
-	//cfg, err := vspherecfg.ReadConfig([]byte(data))
 	if err != nil {
 		return nil, err
 	}
