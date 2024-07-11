@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2017-2023 VMware, Inc. All Rights Reserved.
+Copyright (c) 2017-2024 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator/internal"
@@ -105,6 +107,10 @@ func getManagedObject(obj mo.Reference) reflect.Value {
 		}
 		rval = rval.Field(0)
 		rtype = rval.Type()
+		if rtype.Kind() == reflect.Pointer {
+			rval = rval.Elem()
+			rtype = rval.Type()
+		}
 	}
 
 	return rval
@@ -122,6 +128,10 @@ func wrapValue(rval reflect.Value, rtype reflect.Type) interface{} {
 				String: v,
 			}
 		case []uint8:
+			pval = &types.ArrayOfByte{
+				Byte: v,
+			}
+		case types.ByteSlice:
 			pval = &types.ArrayOfByte{
 				Byte: v,
 			}
@@ -151,15 +161,19 @@ func wrapValue(rval reflect.Value, rtype reflect.Type) interface{} {
 	return pval
 }
 
-func fieldValueInterface(f reflect.StructField, rval reflect.Value) interface{} {
+func fieldValueInterface(f reflect.StructField, rval reflect.Value, keyed ...bool) interface{} {
 	if rval.Kind() == reflect.Ptr {
 		rval = rval.Elem()
+	}
+
+	if len(keyed) == 1 && keyed[0] {
+		return rval.Interface() // don't wrap keyed fields in ArrayOf* type
 	}
 
 	return wrapValue(rval, f.Type)
 }
 
-func fieldValue(rval reflect.Value, p string) (interface{}, error) {
+func fieldValue(rval reflect.Value, p string, keyed ...bool) (interface{}, error) {
 	var value interface{}
 	fields := strings.Split(p, ".")
 
@@ -198,7 +212,7 @@ func fieldValue(rval reflect.Value, p string) (interface{}, error) {
 
 		if i == len(fields)-1 {
 			ftype, _ := rval.Type().FieldByName(x)
-			value = fieldValueInterface(ftype, val)
+			value = fieldValueInterface(ftype, val, keyed...)
 			break
 		}
 
@@ -206,6 +220,64 @@ func fieldValue(rval reflect.Value, p string) (interface{}, error) {
 	}
 
 	return value, nil
+}
+
+func fieldValueKey(rval reflect.Value, p mo.Field) (interface{}, error) {
+	if rval.Kind() != reflect.Slice {
+		return nil, errInvalidField
+	}
+
+	zero := reflect.Value{}
+
+	for i := 0; i < rval.Len(); i++ {
+		item := rval.Index(i)
+		if item.Kind() == reflect.Interface {
+			item = item.Elem()
+		}
+		if item.Kind() == reflect.Ptr {
+			item = item.Elem()
+		}
+		if item.Kind() != reflect.Struct {
+			return reflect.Value{}, errInvalidField
+		}
+
+		field := item.FieldByName("Key")
+		if field == zero {
+			return nil, errInvalidField
+		}
+
+		switch key := field.Interface().(type) {
+		case string:
+			s, ok := p.Key.(string)
+			if !ok {
+				return nil, errInvalidField
+			}
+			if s == key {
+				return item.Interface(), nil
+			}
+		case int32:
+			s, ok := p.Key.(int32)
+			if !ok {
+				return nil, errInvalidField
+			}
+			if s == key {
+				return item.Interface(), nil
+			}
+		default:
+			return nil, errInvalidField
+		}
+	}
+
+	return nil, nil
+}
+
+func fieldValueIndex(rval reflect.Value, p mo.Field) (interface{}, error) {
+	val, err := fieldValueKey(rval, p)
+	if err != nil || val == nil || p.Item == "" {
+		return val, err
+	}
+
+	return fieldValue(reflect.ValueOf(val), p.Item)
 }
 
 func fieldRefs(f interface{}) []types.ManagedObjectReference {
@@ -323,7 +395,19 @@ func (rr *retrieveResult) collectFields(ctx *Context, rval reflect.Value, fields
 		}
 		seen[name] = true
 
-		val, err := fieldValue(rval, name)
+		var val interface{}
+		var err error
+		var field mo.Field
+		if field.FromString(name) {
+			keyed := field.Key != nil
+
+			val, err = fieldValue(rval, field.Path, keyed)
+			if err == nil && keyed {
+				val, err = fieldValueIndex(reflect.ValueOf(val), field)
+			}
+		} else {
+			err = errInvalidField
+		}
 
 		switch err {
 		case nil, errEmptyField:
@@ -519,6 +603,62 @@ func (pc *PropertyCollector) DestroyPropertyCollector(ctx *Context, c *types.Des
 	return body
 }
 
+var retrievePropertiesExBook sync.Map
+
+type retrievePropertiesExPage struct {
+	MaxObjects int32
+	Objects    []types.ObjectContent
+}
+
+func (pc *PropertyCollector) ContinueRetrievePropertiesEx(ctx *Context, r *types.ContinueRetrievePropertiesEx) soap.HasFault {
+	body := &methods.ContinueRetrievePropertiesExBody{}
+
+	if r.Token == "" {
+		body.Fault_ = Fault("", &types.InvalidPropertyFault{Name: "token"})
+		return body
+	}
+
+	obj, ok := retrievePropertiesExBook.LoadAndDelete(r.Token)
+	if !ok {
+		body.Fault_ = Fault("", &types.InvalidPropertyFault{Name: "token"})
+		return body
+	}
+
+	page := obj.(retrievePropertiesExPage)
+
+	var (
+		objsToStore  []types.ObjectContent
+		objsToReturn []types.ObjectContent
+	)
+	for i := range page.Objects {
+		if page.MaxObjects <= 0 || i < int(page.MaxObjects) {
+			objsToReturn = append(objsToReturn, page.Objects[i])
+		} else {
+			objsToStore = append(objsToStore, page.Objects[i])
+		}
+	}
+
+	if len(objsToStore) > 0 {
+		body.Res = &types.ContinueRetrievePropertiesExResponse{}
+		body.Res.Returnval.Token = uuid.NewString()
+		retrievePropertiesExBook.Store(
+			body.Res.Returnval.Token,
+			retrievePropertiesExPage{
+				MaxObjects: page.MaxObjects,
+				Objects:    objsToStore,
+			})
+	}
+
+	if len(objsToReturn) > 0 {
+		if body.Res == nil {
+			body.Res = &types.ContinueRetrievePropertiesExResponse{}
+		}
+		body.Res.Returnval.Objects = objsToReturn
+	}
+
+	return body
+}
+
 func (pc *PropertyCollector) RetrievePropertiesEx(ctx *Context, r *types.RetrievePropertiesEx) soap.HasFault {
 	body := &methods.RetrievePropertiesExBody{}
 
@@ -533,7 +673,28 @@ func (pc *PropertyCollector) RetrievePropertiesEx(ctx *Context, r *types.Retriev
 		}
 	} else {
 		objects := res.Objects[:0]
-		for _, o := range res.Objects {
+
+		var (
+			objsToStore  []types.ObjectContent
+			objsToReturn []types.ObjectContent
+		)
+		for i := range res.Objects {
+			if r.Options.MaxObjects <= 0 || i < int(r.Options.MaxObjects) {
+				objsToReturn = append(objsToReturn, res.Objects[i])
+			} else {
+				objsToStore = append(objsToStore, res.Objects[i])
+			}
+		}
+
+		if len(objsToStore) > 0 {
+			res.Token = uuid.NewString()
+			retrievePropertiesExBook.Store(res.Token, retrievePropertiesExPage{
+				MaxObjects: r.Options.MaxObjects,
+				Objects:    objsToStore,
+			})
+		}
+
+		for _, o := range objsToReturn {
 			propSet := o.PropSet[:0]
 			for _, p := range o.PropSet {
 				if p.Val != nil {
@@ -855,9 +1016,12 @@ func (pc *PropertyCollector) Fetch(ctx *Context, req *internal.Fetch) soap.HasFa
 
 	obj := res.(*methods.RetrievePropertiesExBody).Res.Returnval.Objects[0]
 	if len(obj.PropSet) == 0 {
-		fault := obj.MissingSet[0].Fault
-		body.Fault_ = Fault(fault.LocalizedMessage, fault.Fault)
-		return body
+		if len(obj.MissingSet) > 0 {
+			fault := obj.MissingSet[0].Fault
+			body.Fault_ = Fault(fault.LocalizedMessage, fault.Fault)
+			return body
+		}
+		return res
 	}
 
 	body.Res = &internal.FetchResponse{
