@@ -44,7 +44,7 @@ var (
 		{
 			name:        "datastore which is part of a datastore cluster",
 			datastore:   "/DC0/datastore/DC0_POD0/LocalDS_2",
-			expectError: true,
+			expectError: false, // we only log a warning
 			dsType:      "OTHER",
 		},
 		{
