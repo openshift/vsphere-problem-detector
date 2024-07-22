@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2017-2023 VMware, Inc. All Rights Reserved.
+Copyright (c) 2017-2024 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -232,6 +232,7 @@ func (vm *VirtualMachine) apply(spec *types.VirtualMachineConfigSpec) {
 		{spec.InstanceUuid, &vm.Config.InstanceUuid},
 		{spec.InstanceUuid, &vm.Summary.Config.InstanceUuid},
 		{spec.Version, &vm.Config.Version},
+		{spec.Version, &vm.Summary.Config.HwVersion},
 		{spec.Files.VmPathName, &vm.Config.Files.VmPathName},
 		{spec.Files.VmPathName, &vm.Summary.Config.VmPathName},
 		{spec.Files.SnapshotDirectory, &vm.Config.Files.SnapshotDirectory},
@@ -428,12 +429,19 @@ func extraConfigKey(key string) string {
 }
 
 func (vm *VirtualMachine) applyExtraConfig(ctx *Context, spec *types.VirtualMachineConfigSpec) types.BaseMethodFault {
+	if len(spec.ExtraConfig) == 0 {
+		return nil
+	}
 	var removedContainerBacking bool
 	var changes []types.PropertyChange
+	field := mo.Field{Path: "config.extraConfig"}
+
 	for _, c := range spec.ExtraConfig {
 		val := c.GetOptionValue()
 		key := strings.TrimPrefix(extraConfigKey(val.Key), "SET.")
 		if key == val.Key {
+			field.Key = key
+			op := types.PropertyChangeOpAssign
 			keyIndex := -1
 			for i := range vm.Config.ExtraConfig {
 				bov := vm.Config.ExtraConfig[i]
@@ -450,23 +458,26 @@ func (vm *VirtualMachine) applyExtraConfig(ctx *Context, spec *types.VirtualMach
 				}
 			}
 			if keyIndex < 0 {
+				op = types.PropertyChangeOpAdd
 				vm.Config.ExtraConfig = append(vm.Config.ExtraConfig, c)
 			} else {
 				if s, ok := val.Value.(string); ok && s == "" {
+					op = types.PropertyChangeOpRemove
 					if key == ContainerBackingOptionKey {
 						removedContainerBacking = true
 					}
 					// Remove existing element
-					l := len(vm.Config.ExtraConfig)
-					vm.Config.ExtraConfig[keyIndex] = vm.Config.ExtraConfig[l-1]
-					vm.Config.ExtraConfig[l-1] = nil
-					vm.Config.ExtraConfig = vm.Config.ExtraConfig[:l-1]
+					vm.Config.ExtraConfig = append(
+						vm.Config.ExtraConfig[:keyIndex],
+						vm.Config.ExtraConfig[keyIndex+1:]...)
+					val = nil
 				} else {
 					// Update existing element
-					vm.Config.ExtraConfig[keyIndex].GetOptionValue().Value = val.Value
+					vm.Config.ExtraConfig[keyIndex] = val
 				}
 			}
 
+			changes = append(changes, types.PropertyChange{Name: field.String(), Val: val, Op: op})
 			continue
 		}
 		changes = append(changes, types.PropertyChange{Name: key, Val: val.Value})
@@ -528,9 +539,8 @@ func (vm *VirtualMachine) applyExtraConfig(ctx *Context, spec *types.VirtualMach
 		}
 	}
 
-	if len(changes) != 0 {
-		Map.Update(vm, changes)
-	}
+	change := types.PropertyChange{Name: field.Path, Val: vm.Config.ExtraConfig}
+	ctx.Map.Update(vm, append(changes, change))
 
 	return fault
 }
@@ -545,7 +555,13 @@ func validateGuestID(id string) types.BaseMethodFault {
 	return &types.InvalidArgument{InvalidProperty: "configSpec.guestId"}
 }
 
-func (vm *VirtualMachine) configure(ctx *Context, spec *types.VirtualMachineConfigSpec) types.BaseMethodFault {
+func (vm *VirtualMachine) configure(ctx *Context, spec *types.VirtualMachineConfigSpec) (result types.BaseMethodFault) {
+	defer func() {
+		if result == nil {
+			vm.updateLastModifiedAndChangeVersion(ctx)
+		}
+	}()
+
 	vm.apply(spec)
 
 	if spec.MemoryAllocation != nil {
@@ -1177,7 +1193,10 @@ func getDiskSize(disk *types.VirtualDisk) int64 {
 
 func changedDiskSize(oldDisk *types.VirtualDisk, newDiskSpec *types.VirtualDisk) (int64, bool) {
 	// capacity cannot be decreased
-	if newDiskSpec.CapacityInBytes < oldDisk.CapacityInBytes || newDiskSpec.CapacityInKB < oldDisk.CapacityInKB {
+	if newDiskSpec.CapacityInBytes > 0 && newDiskSpec.CapacityInBytes < oldDisk.CapacityInBytes {
+		return 0, false
+	}
+	if newDiskSpec.CapacityInKB > 0 && newDiskSpec.CapacityInKB < oldDisk.CapacityInKB {
 		return 0, false
 	}
 
@@ -1189,10 +1208,13 @@ func changedDiskSize(oldDisk *types.VirtualDisk, newDiskSpec *types.VirtualDisk)
 		return newDiskSpec.CapacityInBytes, true
 	}
 
-	// CapacityInBytes and CapacityInKB indicate different values
-	if newDiskSpec.CapacityInBytes != newDiskSpec.CapacityInKB*1024 {
-		return 0, false
+	// if both set, CapacityInBytes and CapacityInKB must be the same
+	if newDiskSpec.CapacityInBytes > 0 && newDiskSpec.CapacityInKB > 0 {
+		if newDiskSpec.CapacityInBytes != newDiskSpec.CapacityInKB*1024 {
+			return 0, false
+		}
 	}
+
 	return newDiskSpec.CapacityInBytes, true
 }
 
@@ -1573,6 +1595,8 @@ func (vm *VirtualMachine) genVmdkPath(p object.DatastorePath) (string, types.Bas
 }
 
 func (vm *VirtualMachine) configureDevices(ctx *Context, spec *types.VirtualMachineConfigSpec) types.BaseMethodFault {
+	var changes []types.PropertyChange
+	field := mo.Field{Path: "config.hardware.device"}
 	devices := object.VirtualDeviceList(vm.Config.Hardware.Device)
 
 	var err types.BaseMethodFault
@@ -1580,6 +1604,7 @@ func (vm *VirtualMachine) configureDevices(ctx *Context, spec *types.VirtualMach
 		dspec := change.GetVirtualDeviceConfigSpec()
 		device := dspec.Device.GetVirtualDevice()
 		invalid := &types.InvalidDeviceSpec{DeviceIndex: int32(i)}
+		change := types.PropertyChange{}
 
 		switch dspec.FileOperation {
 		case types.VirtualDeviceConfigSpecFileOperationCreate:
@@ -1593,6 +1618,8 @@ func (vm *VirtualMachine) configureDevices(ctx *Context, spec *types.VirtualMach
 
 		switch dspec.Operation {
 		case types.VirtualDeviceConfigSpecOperationAdd:
+			change.Op = types.PropertyChangeOpAdd
+
 			if devices.FindByKey(device.Key) != nil && device.ControllerKey == 0 {
 				// Note: real ESX does not allow adding base controllers (ControllerKey = 0)
 				// after VM is created (returns success but device is not added).
@@ -1618,6 +1645,7 @@ func (vm *VirtualMachine) configureDevices(ctx *Context, spec *types.VirtualMach
 			}
 
 			devices = append(devices, dspec.Device)
+			change.Val = dspec.Device
 			if key != device.Key {
 				// Update ControllerKey refs
 				for i := range spec.DeviceChange {
@@ -1645,14 +1673,22 @@ func (vm *VirtualMachine) configureDevices(ctx *Context, spec *types.VirtualMach
 			}
 
 			devices = append(devices, dspec.Device)
+			change.Val = dspec.Device
 		case types.VirtualDeviceConfigSpecOperationRemove:
+			change.Op = types.PropertyChangeOpRemove
+
 			devices = vm.removeDevice(ctx, devices, dspec)
 		}
+
+		field.Key = device.Key
+		change.Name = field.String()
+		changes = append(changes, change)
 	}
 
-	ctx.Map.Update(vm, []types.PropertyChange{
-		{Name: "config.hardware.device", Val: []types.BaseVirtualDevice(devices)},
-	})
+	if len(changes) != 0 {
+		change := types.PropertyChange{Name: field.Path, Val: []types.BaseVirtualDevice(devices)}
+		ctx.Map.Update(vm, append(changes, change))
+	}
 
 	err = vm.updateDiskLayouts()
 	if err != nil {
@@ -1877,11 +1913,138 @@ func (vm *VirtualMachine) UpgradeVMTask(ctx *Context, req *types.UpgradeVM_Task)
 	body := &methods.UpgradeVM_TaskBody{}
 
 	task := CreateTask(vm, "upgradeVm", func(t *Task) (types.AnyType, types.BaseMethodFault) {
-		if vm.Config.Version != esx.HardwareVersion {
-			ctx.Map.Update(vm, []types.PropertyChange{{
-				Name: "config.version", Val: esx.HardwareVersion,
-			}})
+
+		newInvalidStateFault := func(format string, args ...any) *types.InvalidState {
+			msg := fmt.Sprintf(format, args...)
+			return &types.InvalidState{
+				VimFault: types.VimFault{
+					MethodFault: types.MethodFault{
+						FaultCause: &types.LocalizedMethodFault{
+							Fault: &types.SystemErrorFault{
+								Reason: msg,
+							},
+							LocalizedMessage: msg,
+						},
+					},
+				},
+			}
 		}
+
+		// InvalidPowerState
+		//
+		// 1. Is VM's power state anything other than powered off?
+		if vm.Runtime.PowerState != types.VirtualMachinePowerStatePoweredOff {
+			return nil, &types.InvalidPowerStateFault{
+				ExistingState:  vm.Runtime.PowerState,
+				RequestedState: types.VirtualMachinePowerStatePoweredOff,
+			}
+		}
+
+		// InvalidState
+		//
+		// 1. Is host on which VM is scheduled in maintenance mode?
+		// 2. Is VM a template?
+		// 3. Is VM already the latest hardware version?
+		var (
+			ebRef                     *types.ManagedObjectReference
+			latestHardwareVersion     string
+			hostRef                   = vm.Runtime.Host
+			supportedHardwareVersions = map[string]struct{}{}
+			vmHardwareVersionString   = vm.Config.Version
+		)
+		if hostRef != nil {
+			var hostInMaintenanceMode bool
+			ctx.WithLock(*hostRef, func() {
+				host := ctx.Map.Get(*hostRef).(*HostSystem)
+				hostInMaintenanceMode = host.Runtime.InMaintenanceMode
+				switch host.Parent.Type {
+				case "ClusterComputeResource":
+					obj := ctx.Map.Get(*host.Parent).(*ClusterComputeResource)
+					ebRef = obj.EnvironmentBrowser
+				case "ComputeResource":
+					obj := ctx.Map.Get(*host.Parent).(*mo.ComputeResource)
+					ebRef = obj.EnvironmentBrowser
+				}
+			})
+			if hostInMaintenanceMode {
+				return nil, newInvalidStateFault("%s in maintenance mode", hostRef.Value)
+			}
+		}
+		if vm.Config.Template {
+			return nil, newInvalidStateFault("%s is template", vm.Reference().Value)
+		}
+		if ebRef != nil {
+			ctx.WithLock(*ebRef, func() {
+				eb := ctx.Map.Get(*ebRef).(*EnvironmentBrowser)
+				for i := range eb.QueryConfigOptionDescriptorResponse.Returnval {
+					cod := eb.QueryConfigOptionDescriptorResponse.Returnval[i]
+					for j := range cod.Host {
+						if cod.Host[j].Value == hostRef.Value {
+							supportedHardwareVersions[cod.Key] = struct{}{}
+						}
+						if latestHardwareVersion == "" {
+							if def := cod.DefaultConfigOption; def != nil && *def {
+								latestHardwareVersion = cod.Key
+							}
+						}
+					}
+				}
+			})
+		}
+
+		if latestHardwareVersion == "" {
+			latestHardwareVersion = esx.HardwareVersion
+		}
+		if vmHardwareVersionString == latestHardwareVersion {
+			return nil, newInvalidStateFault("%s is latest version", vm.Reference().Value)
+		}
+		if req.Version == "" {
+			req.Version = latestHardwareVersion
+		}
+
+		// NotSupported
+		targetVersion, _ := types.ParseHardwareVersion(req.Version)
+		if targetVersion.IsValid() {
+			req.Version = targetVersion.String()
+		}
+		if _, ok := supportedHardwareVersions[req.Version]; !ok {
+			msg := fmt.Sprintf("%s not supported", req.Version)
+			return nil, &types.NotSupported{
+				RuntimeFault: types.RuntimeFault{
+					MethodFault: types.MethodFault{
+						FaultCause: &types.LocalizedMethodFault{
+							Fault: &types.SystemErrorFault{
+								Reason: msg,
+							},
+							LocalizedMessage: msg,
+						},
+					},
+				},
+			}
+		}
+
+		// AlreadyUpgraded
+		vmHardwareVersion, _ := types.ParseHardwareVersion(vmHardwareVersionString)
+		if targetVersion.IsValid() && vmHardwareVersion.IsValid() &&
+			targetVersion <= vmHardwareVersion {
+
+			return nil, &types.AlreadyUpgradedFault{}
+		}
+
+		// InvalidArgument
+		if targetVersion < types.VMX3 {
+			return nil, &types.InvalidArgument{}
+		}
+
+		ctx.Map.Update(vm, []types.PropertyChange{
+			{
+				Name: "config.version", Val: targetVersion.String(),
+			},
+			{
+				Name: "summary.config.hwVersion", Val: targetVersion.String(),
+			},
+		})
+
 		return nil, nil
 	})
 
@@ -2050,10 +2213,6 @@ func (vm *VirtualMachine) CloneVMTask(ctx *Context, req *types.CloneVM_Task) soa
 				VmPathName: vmx.String(),
 			},
 		}
-		if req.Spec.Config != nil {
-			config.ExtraConfig = req.Spec.Config.ExtraConfig
-			config.InstanceUuid = req.Spec.Config.InstanceUuid
-		}
 
 		// Copying hardware properties
 		config.NumCPUs = vm.Config.Hardware.NumCPU
@@ -2088,6 +2247,14 @@ func (vm *VirtualMachine) CloneVMTask(ctx *Context, req *types.CloneVM_Task) soa
 				Device:        device,
 				FileOperation: fop,
 			})
+		}
+
+		if dst, src := config, req.Spec.Config; src != nil {
+			dst.ExtraConfig = src.ExtraConfig
+			copyNonEmptyValue(&dst.Uuid, &src.Uuid)
+			copyNonEmptyValue(&dst.InstanceUuid, &src.InstanceUuid)
+			copyNonEmptyValue(&dst.NumCPUs, &src.NumCPUs)
+			copyNonEmptyValue(&dst.MemoryMB, &src.MemoryMB)
 		}
 
 		res := ctx.Map.Get(req.Folder).(vmFolder).CreateVMTask(ctx, &types.CreateVM_Task{
@@ -2128,6 +2295,17 @@ func (vm *VirtualMachine) CloneVMTask(ctx *Context, req *types.CloneVM_Task) soa
 			Returnval: task.Run(ctx),
 		},
 	}
+}
+
+func copyNonEmptyValue[T comparable](dst, src *T) {
+	if dst == nil || src == nil {
+		return
+	}
+	var t T
+	if *src == t {
+		return
+	}
+	*dst = *src
 }
 
 func (vm *VirtualMachine) RelocateVMTask(ctx *Context, req *types.RelocateVM_Task) soap.HasFault {
@@ -2637,4 +2815,20 @@ func changeTrackingSupported(spec *types.VirtualMachineConfigSpec) bool {
 		}
 	}
 	return false
+}
+
+func (vm *VirtualMachine) updateLastModifiedAndChangeVersion(ctx *Context) {
+	modified := time.Now()
+	ctx.Map.Update(vm, []types.PropertyChange{
+		{
+			Name: "config.changeVersion",
+			Val:  fmt.Sprintf("%d", modified.UnixNano()),
+			Op:   types.PropertyChangeOpAssign,
+		},
+		{
+			Name: "config.modified",
+			Val:  modified,
+			Op:   types.PropertyChangeOpAssign,
+		},
+	})
 }
