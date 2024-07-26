@@ -8,6 +8,7 @@ import (
 	configinformer "github.com/openshift/client-go/config/informers/externalversions"
 	operatorclient "github.com/openshift/client-go/operator/clientset/versioned"
 	informer "github.com/openshift/client-go/operator/informers/externalversions"
+	operatorinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -47,12 +48,16 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	}
 	configInformers := configinformer.NewSharedInformerFactoryWithOptions(configClient, resync)
 
+	operatorInformer := operatorinformers.NewSharedInformerFactory(csiConfigClient, 20*time.Minute)
+	clusterCSIDriverInformer := operatorInformer.Operator().V1().ClusterCSIDrivers()
+
 	operator := NewVSphereProblemDetectorController(
 		operatorClient,
 		kubeClient,
 		kubeInformers,
 		configInformers.Config().V1().Infrastructures(),
 		controllerConfig.EventRecorder,
+		clusterCSIDriverInformer,
 	)
 
 	logLevelController := loglevel.NewClusterOperatorLoggingController(operatorClient, controllerConfig.EventRecorder)
@@ -64,6 +69,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		csiConfigInformers,
 		kubeInformers,
 		configInformers,
+		operatorInformer,
 	} {
 		informer.Start(ctx.Done())
 	}
