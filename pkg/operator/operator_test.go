@@ -10,7 +10,6 @@ import (
 	opv1 "github.com/openshift/api/operator/v1"
 	configinformers "github.com/openshift/client-go/config/listers/config/v1"
 	fakeop "github.com/openshift/client-go/operator/clientset/versioned/fake"
-	operatorinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	opinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -255,7 +254,7 @@ func TestSyncChecks(t *testing.T) {
 				vsphereProblemOperator.nextCheck = time.Now().Add(10 * time.Second)
 			}
 
-			delay, lastCheckResult, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info, false)
+			delay, lastCheckResult, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info)
 			if tc.expectedCheckPerfom != checksPerformed {
 				t.Fatalf("for checks performed expected %v got %v", tc.expectedCheckPerfom, checksPerformed)
 			}
@@ -349,16 +348,6 @@ func TestSync(t *testing.T) {
 				Client:    opClient.OperatorV1(),
 			}
 
-			c := opv1.ClusterCSIDriver{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "csi.vsphere.vmware.com",
-				},
-			}
-			fakeOperatorClient := fakeop.NewSimpleClientset(&c)
-			operatorInformer := operatorinformers.NewSharedInformerFactory(fakeOperatorClient, 0)
-			operatorInformer.Operator().V1().ClusterCSIDrivers().Informer().GetIndexer().Add(&c)
-			clusterCSIDriverInformer := operatorInformer.Operator().V1().ClusterCSIDrivers()
-
 			vsphereProblemOperator := &vSphereProblemDetectorController{
 				checkerFunc: func(c *vSphereProblemDetectorController) vSphereCheckerInterface {
 					return &testvSphereChecker{
@@ -368,11 +357,10 @@ func TestSync(t *testing.T) {
 						checkErr:       tc.mockCheckError,
 					}
 				},
-				operatorClient:         operatorClient,
-				clusterCSIDriverLister: clusterCSIDriverInformer.Lister(),
-				infraLister:            &testInfraLister{},
-				backoff:                defaultBackoff,
-				eventRecorder:          events.NewInMemoryRecorder("vsphere-problem-detector"),
+				operatorClient: operatorClient,
+				infraLister:    &testInfraLister{},
+				backoff:        defaultBackoff,
+				eventRecorder:  events.NewInMemoryRecorder("vsphere-problem-detector"),
 			}
 
 			err := vsphereProblemOperator.sync(context.TODO(), factory.NewSyncContext(controllerName, events.NewInMemoryRecorder("test-csi-driver")))

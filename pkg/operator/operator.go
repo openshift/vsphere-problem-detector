@@ -13,8 +13,6 @@ import (
 	operatorapi "github.com/openshift/api/operator/v1"
 	infrainformer "github.com/openshift/client-go/config/informers/externalversions/config/v1"
 	infralister "github.com/openshift/client-go/config/listers/config/v1"
-	clustercsidriverinformer "github.com/openshift/client-go/operator/informers/externalversions/operator/v1"
-	operatorlister "github.com/openshift/client-go/operator/listers/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -30,15 +28,14 @@ import (
 )
 
 type vSphereProblemDetectorController struct {
-	operatorClient         *OperatorClient
-	kubeClient             kubernetes.Interface
-	infraLister            infralister.InfrastructureLister
-	secretLister           corelister.SecretLister
-	nodeLister             corelister.NodeLister
-	pvLister               corelister.PersistentVolumeLister
-	scLister               storagelister.StorageClassLister
-	cloudConfigMapLister   corelister.ConfigMapLister
-	clusterCSIDriverLister operatorlister.ClusterCSIDriverLister
+	operatorClient       *OperatorClient
+	kubeClient           kubernetes.Interface
+	infraLister          infralister.InfrastructureLister
+	secretLister         corelister.SecretLister
+	nodeLister           corelister.NodeLister
+	pvLister             corelister.PersistentVolumeLister
+	scLister             storagelister.StorageClassLister
+	cloudConfigMapLister corelister.ConfigMapLister
 
 	metricsCollector *metrics.Collector
 
@@ -69,7 +66,6 @@ const (
 	controllerName             = "VSphereProblemDetectorController"
 	infrastructureName         = "cluster"
 	cloudCredentialsSecretName = "vsphere-cloud-credentials"
-	vSphereCSIDdriver          = "csi.vsphere.vmware.com"
 	// TODO: make it configurable?
 	parallelVSPhereCalls = 10
 	// Size of golang channel buffer
@@ -78,7 +74,6 @@ const (
 	minVCenterVersion     = "6.7.3"
 	hardwareVersionPrefix = "vmx-"
 	minHardwareVersion    = 15
-	silencedCap           = time.Hour * 24
 )
 
 var (
@@ -98,8 +93,7 @@ func NewVSphereProblemDetectorController(
 	kubeClient kubernetes.Interface,
 	namespacedInformer v1helpers.KubeInformersForNamespaces,
 	configInformer infrainformer.InfrastructureInformer,
-	eventRecorder events.Recorder,
-	clusterCSIDriverInformer clustercsidriverinformer.ClusterCSIDriverInformer) factory.Controller {
+	eventRecorder events.Recorder) factory.Controller {
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
 	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
@@ -110,22 +104,21 @@ func NewVSphereProblemDetectorController(
 	collector := metrics.NewMetricsCollector()
 
 	c := &vSphereProblemDetectorController{
-		operatorClient:         operatorClient,
-		kubeClient:             kubeClient,
-		secretLister:           secretInformer.Lister(),
-		nodeLister:             nodeInformer.Lister(),
-		pvLister:               pvInformer.Lister(),
-		scLister:               scInformer.Lister(),
-		cloudConfigMapLister:   cloudConfigMapInformer.Lister(),
-		clusterCSIDriverLister: clusterCSIDriverInformer.Lister(),
-		infraLister:            configInformer.Lister(),
-		metricsCollector:       collector,
-		eventRecorder:          eventRecorder.WithComponentSuffix(controllerName),
-		clusterChecks:          check.DefaultClusterChecks,
-		nodeChecks:             check.DefaultNodeChecks,
-		backoff:                defaultBackoff,
-		checkerFunc:            newVSphereChecker,
-		nextCheck:              time.Time{}, // Explicitly set to zero to run checks on the first sync().
+		operatorClient:       operatorClient,
+		kubeClient:           kubeClient,
+		secretLister:         secretInformer.Lister(),
+		nodeLister:           nodeInformer.Lister(),
+		pvLister:             pvInformer.Lister(),
+		scLister:             scInformer.Lister(),
+		cloudConfigMapLister: cloudConfigMapInformer.Lister(),
+		infraLister:          configInformer.Lister(),
+		metricsCollector:     collector,
+		eventRecorder:        eventRecorder.WithComponentSuffix(controllerName),
+		clusterChecks:        check.DefaultClusterChecks,
+		nodeChecks:           check.DefaultNodeChecks,
+		backoff:              defaultBackoff,
+		checkerFunc:          newVSphereChecker,
+		nextCheck:            time.Time{}, // Explicitly set to zero to run checks on the first sync().
 	}
 	legacyregistry.CustomMustRegister(collector)
 
@@ -136,7 +129,6 @@ func NewVSphereProblemDetectorController(
 		pvInformer.Informer(),
 		scInformer.Informer(),
 		cloudConfigMapInformer.Informer(),
-		clusterCSIDriverInformer.Informer(),
 	).ToController(controllerName, c.eventRecorder)
 }
 
@@ -160,14 +152,8 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		return nil
 	}
 
-	ccd, err := c.clusterCSIDriverLister.Get(vSphereCSIDdriver)
-	if err != nil {
-		return err
-	}
-	silenced := ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
-
 	clusterInfo := util.NewClusterInfo()
-	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo, silenced)
+	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
 
 	// if no checks were performed don't update conditons
 	if !checkPerformed {
@@ -206,14 +192,14 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context,
 }
 
 // runSyncChecks runs vsphere checks and return next duration and whether checks were actually ran.
-func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo, silenced bool) (time.Duration, clusterCheckResult, bool) {
+func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, clusterCheckResult, bool) {
 	var delay time.Duration
 	var lastCheckResult clusterCheckResult
 	if !time.Now().After(c.nextCheck) {
 		return delay, lastCheckResult, false
 	}
 
-	delay, err := c.runChecks(ctx, clusterInfo, silenced)
+	delay, err := c.runChecks(ctx, clusterInfo)
 	if err != nil {
 		klog.Errorf("failed to run checks: %s", err)
 		lastCheckResult.checkError = err
@@ -225,7 +211,7 @@ func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, cl
 	lastCheckResult.blockUpgrade, lastCheckResult.blockUpgradeReason = c.checkForDeprecation(clusterInfo)
 	// if we are going to block upgrades but there was no error
 	// then we should try more frequently in case node/cluster status is updated
-	if lastCheckResult.blockUpgrade && err == nil && !silenced {
+	if lastCheckResult.blockUpgrade && err == nil {
 		delay = c.backoff.Step()
 	}
 	return delay, lastCheckResult, true
@@ -293,7 +279,7 @@ func parseForSemver(version string) string {
 	return version
 }
 
-func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo, silenced bool) (time.Duration, error) {
+func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, error) {
 	// pre-calculate exp. backoff on error
 	nextErrorDelay := c.backoff.Step()
 	c.lastCheck = time.Now()
@@ -308,7 +294,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 	results, checkError := resultCollector.Collect()
 	c.reportResults(results)
 	var nextDelay time.Duration
-	if checkError != nil && !silenced {
+	if checkError != nil {
 		// Use exponential backoff
 		nextDelay = nextErrorDelay
 	} else {
@@ -316,11 +302,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 		c.backoff = defaultBackoff
 		// Delay after success is after the maximum backoff
 		// (i.e. retry as slow as allowed).
-		if silenced {
-			nextDelay = silencedCap
-		} else {
-			nextDelay = defaultBackoff.Cap
-		}
+		nextDelay = defaultBackoff.Cap
 	}
 	return nextDelay, checkError
 }
