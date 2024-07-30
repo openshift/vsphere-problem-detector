@@ -8,6 +8,7 @@ import (
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/cache"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -34,7 +35,7 @@ func getDatastoreByURL(ctx *CheckContext, dsURL string) (dsMo mo.Datastore, dcNa
 			if err == cache.ErrDatastoreNotFound {
 				continue
 			}
-			klog.Errorf("error fetching datastoreURL %s from datacenter %s", dsURL, fd.Topology.Datacenter)
+			log.Logf("error fetching datastoreURL %s from datacenter %s", dsURL, fd.Topology.Datacenter)
 			return
 		}
 		if dsMo.Info.GetDatastoreInfo().Url == dsURL {
@@ -121,7 +122,7 @@ func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacen
 	finder.SetDatacenter(datacenter)
 	computeClusterMo, err := finder.ClusterComputeResource(tctx, computeCluster)
 	if err != nil {
-		klog.Errorf("Unable to get cluster ComputeResource: %s", err)
+		log.Logf("Unable to get cluster ComputeResource: %s", err)
 	}
 	return computeClusterMo, err
 }

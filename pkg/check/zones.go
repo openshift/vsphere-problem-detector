@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	v1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 )
 
 type validationContext struct {
@@ -128,7 +129,7 @@ func CheckZoneTags(ctx *CheckContext) error {
 	klog.V(4).Info("Getting infrastructure configuration.")
 	inf, err := ctx.KubeClient.GetInfrastructure(ctx.Context)
 	if err != nil {
-		klog.Errorf("Error getting infrastructure: %v", err)
+		log.Logf("Error getting infrastructure: %v", err)
 		return err
 	}
 

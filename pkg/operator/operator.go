@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -164,10 +165,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if err != nil {
 		return err
 	}
-	silenced := ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
+	log.Silenced = ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
 
 	clusterInfo := util.NewClusterInfo()
-	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo, silenced)
+	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo, log.Silenced)
 
 	// if no checks were performed don't update conditons
 	if !checkPerformed {
@@ -215,7 +216,7 @@ func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, cl
 
 	delay, err := c.runChecks(ctx, clusterInfo, silenced)
 	if err != nil {
-		klog.Errorf("failed to run checks: %s", err)
+		log.Logf("failed to run checks: %s", err)
 		lastCheckResult.checkError = err
 		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	} else {
@@ -236,7 +237,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 	for host, esxiVersion := range esxiVersions {
 		hasMinimum, err := isMinimumVersion(minHostVersion, esxiVersion.APIVersion)
 		if err != nil {
-			klog.Errorf("error parsing host version: %v", err)
+			log.Logf("error parsing host version: %v", err)
 			continue
 		}
 		if !hasMinimum {
@@ -248,7 +249,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 		vmHWVersion := strings.Trim(hwVersion, hardwareVersionPrefix)
 		versionInt, err := strconv.ParseInt(vmHWVersion, 0, 64)
 		if err != nil {
-			klog.Errorf("error parsing hardware version %s: %v", hwVersion, err)
+			log.Logf("error parsing hardware version %s: %v", hwVersion, err)
 			continue
 		}
 		if versionInt < minHardwareVersion {
@@ -259,7 +260,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 	_, vcenterAPIVersion := clusterInfo.GetVCenterVersion()
 	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterAPIVersion)
 	if err != nil {
-		klog.Errorf("error parsing vcenter version: %v", err)
+		log.Logf("error parsing vcenter version: %v", err)
 	}
 
 	if !hasMinimum {

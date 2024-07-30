@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/pkg/errors"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/vim25/types"
-	"k8s.io/klog/v2"
 )
 
 const root = "/..."
@@ -149,7 +149,7 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
 	matchingDC, err := getDatacenter(ctx, dataCenterName)
 	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", dataCenterName, err)
+		log.Logf("error getting datacenter %s: %v", dataCenterName, err)
 		return err
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
@@ -162,7 +162,7 @@ func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissio
 	finder := find.NewFinder(ctx.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
 	if err != nil {
-		klog.Errorf("error getting folder %s: %v", folderPath, err)
+		log.Logf("error getting folder %s: %v", folderPath, err)
 		return err
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, folder.Reference(), ctx.AuthManager, permissions[group]); err != nil {
