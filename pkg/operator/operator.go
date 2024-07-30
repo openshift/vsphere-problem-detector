@@ -306,7 +306,9 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 	klog.V(4).Infof("All checks complete")
 
 	results, checkError := resultCollector.Collect()
-	c.reportResults(results)
+	if !silenced {
+		c.reportResults(results)
+	}
 	var nextDelay time.Duration
 	if checkError != nil && !silenced {
 		// Use exponential backoff
