@@ -255,7 +255,7 @@ func TestSyncChecks(t *testing.T) {
 				vsphereProblemOperator.nextCheck = time.Now().Add(10 * time.Second)
 			}
 
-			delay, lastCheckResult, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info, false)
+			delay, lastCheckResult, checksPerformed := vsphereProblemOperator.runSyncChecks(context.TODO(), info)
 			if tc.expectedCheckPerfom != checksPerformed {
 				t.Fatalf("for checks performed expected %v got %v", tc.expectedCheckPerfom, checksPerformed)
 			}
