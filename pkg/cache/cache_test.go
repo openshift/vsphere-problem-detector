@@ -3,8 +3,9 @@ package cache
 import (
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
 func TestCacheGetDatacenter(t *testing.T) {
@@ -14,10 +15,10 @@ func TestCacheGetDatacenter(t *testing.T) {
 	}
 	defer cleanup()
 
-	cache := NewCheckCache(testSetup.VMClient)
+	cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
 
 	// Populate the cache
-	dcName := testSetup.VMConfig.Workspace.Datacenter
+	dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
 	dc, err := cache.GetDatacenter(testSetup.Context, dcName)
 	assert.NoError(t, err)
 	assert.Equal(t, dc.Name(), "DC0")
@@ -38,11 +39,11 @@ func TestCacheGetDatastore(t *testing.T) {
 	}
 	defer cleanup()
 
-	cache := NewCheckCache(testSetup.VMClient)
+	cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
 
 	// Populate the cache
-	dcName := testSetup.VMConfig.Workspace.Datacenter
-	dsName := testSetup.VMConfig.Workspace.DefaultDatastore
+	dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
+	dsName := testSetup.VMConfig.LegacyConfig.Workspace.DefaultDatastore
 	ds, err := cache.GetDatastore(testSetup.Context, dcName, dsName)
 	assert.NoError(t, err)
 	assert.Equal(t, ds.Name(), "LocalDS_0")
@@ -82,11 +83,11 @@ func TestCacheGetDatastoreByURL(t *testing.T) {
 			}
 			defer cleanup()
 
-			cache := NewCheckCache(testSetup.VMClient)
+			cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
 
 			// Populate the cache
-			dcName := testSetup.VMConfig.Workspace.Datacenter
-			dsName := testSetup.VMConfig.Workspace.DefaultDatastore
+			dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
+			dsName := testSetup.VMConfig.LegacyConfig.Workspace.DefaultDatastore
 			ds, err := cache.GetDatastore(testSetup.Context, dcName, dsName)
 			assert.NoError(t, err)
 			assert.Equal(t, "LocalDS_0", ds.Name())
@@ -115,11 +116,11 @@ func TestCacheGetDatastoreMo(t *testing.T) {
 	}
 	defer cleanup()
 
-	cache := NewCheckCache(testSetup.VMClient)
+	cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
 
 	// Populate the cache
-	dcName := testSetup.VMConfig.Workspace.Datacenter
-	dsName := testSetup.VMConfig.Workspace.DefaultDatastore
+	dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
+	dsName := testSetup.VMConfig.LegacyConfig.Workspace.DefaultDatastore
 	ds, err := cache.GetDatastore(testSetup.Context, dcName, dsName)
 	assert.NoError(t, err)
 	assert.Equal(t, "LocalDS_0", ds.Name())
@@ -140,7 +141,7 @@ func TestCacheGetStoragePods(t *testing.T) {
 	}
 	defer cleanup()
 
-	cache := NewCheckCache(testSetup.VMClient)
+	cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
 
 	// Populate the cache
 	initialPods, err := cache.GetStoragePods(testSetup.Context)

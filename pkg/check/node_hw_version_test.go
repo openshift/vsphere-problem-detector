@@ -4,10 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
-	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	basemetrics "k8s.io/component-base/metrics"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
 
 func TestCollectNodeHWVersion(t *testing.T) {
@@ -67,7 +68,14 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 			if len(test.hwVersions) > 0 {
 				for i := range test.hwVersions {
 					node := kubeClient.Nodes[i]
-					err := testlib.SetHardwareVersion(ctx.VMClient, node, test.hwVersions[i])
+
+					// Get vCenter
+					vCenter, err := GetVCenter(ctx, node)
+					if err != nil {
+						t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+					}
+
+					err = testlib.SetHardwareVersion(vCenter.VMClient, node, test.hwVersions[i])
 					if err != nil {
 						t.Fatalf("Failed to customize node: %s", err)
 					}
@@ -83,7 +91,14 @@ vsphere_node_hw_version_total{hw_version="vmx-15"} 2
 			}
 
 			for _, node := range kubeClient.Nodes {
-				vm, err := testlib.GetVM(ctx.VMClient, node)
+				// Get vCenter
+				vCenter, err := GetVCenter(ctx, node)
+				if err != nil {
+					t.Errorf("Error getting vCenter for node %s: %s", node.Name, err)
+				}
+
+				// Get VM
+				vm, err := testlib.GetVM(vCenter.VMClient, node)
 				if err != nil {
 					t.Errorf("Error getting vm for node %s: %s", node.Name, err)
 				}

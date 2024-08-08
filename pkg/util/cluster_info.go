@@ -21,16 +21,19 @@ type ClusterInfo struct {
 	esxiVersions      map[string]ESXiVersionInfo
 	hwVersions        map[string]int
 	cbtEnabled        map[string]int
-	vcenterVersion    string
-	vcenterAPIVersion string
+	vcenterHostnames  []string
+	vcenterVersion    map[string]string
+	vcenterAPIVersion map[string]string
 	esxiVersionsLock  sync.RWMutex
 }
 
 func NewClusterInfo() *ClusterInfo {
 	info := &ClusterInfo{
-		esxiVersions: make(map[string]ESXiVersionInfo),
-		hwVersions:   make(map[string]int),
-		cbtEnabled:   make(map[string]int),
+		esxiVersions:      make(map[string]ESXiVersionInfo),
+		hwVersions:        make(map[string]int),
+		cbtEnabled:        make(map[string]int),
+		vcenterVersion:    make(map[string]string),
+		vcenterAPIVersion: make(map[string]string),
 	}
 	return info
 }
@@ -38,13 +41,17 @@ func NewClusterInfo() *ClusterInfo {
 // MakeClusterInfo is only used for tests
 func MakeClusterInfo(d map[string]string) *ClusterInfo {
 	info := &ClusterInfo{
-		esxiVersions: make(map[string]ESXiVersionInfo),
-		hwVersions:   make(map[string]int),
+		esxiVersions:      make(map[string]ESXiVersionInfo),
+		hwVersions:        make(map[string]int),
+		cbtEnabled:        make(map[string]int),
+		vcenterVersion:    make(map[string]string),
+		vcenterAPIVersion: make(map[string]string),
 	}
 	info.esxiVersions[d["host_name"]] = ESXiVersionInfo{d["host_version"], d["host_api_version"]}
 	info.hwVersions[d["hw_version"]] = 1
-	info.vcenterAPIVersion = d["vcenter_api_version"]
-	info.vcenterVersion = d["vcenter_version"]
+	info.vcenterAPIVersion[d["host_name"]] = d["vcenter_api_version"]
+	info.vcenterVersion[d["host_name"]] = d["vcenter_version"]
+	info.vcenterHostnames = append(info.vcenterHostnames, d["host_name"])
 	return info
 }
 
@@ -74,11 +81,17 @@ func (c *ClusterInfo) GetHardwareVersion() map[string]int {
 	return hwVersions
 }
 
-func (c *ClusterInfo) SetVCenterVersion(version, apiVersion string) {
+func (c *ClusterInfo) SetVCenterVersion(hostname, version, apiVersion string) {
 	c.esxiVersionsLock.Lock()
 	defer c.esxiVersionsLock.Unlock()
-	c.vcenterVersion = version
-	c.vcenterAPIVersion = apiVersion
+
+	// Add hostname to list if we haven't already set in version field
+	if _, ok := c.vcenterVersion[hostname]; !ok {
+		c.vcenterHostnames = append(c.vcenterHostnames, hostname)
+	}
+
+	c.vcenterVersion[hostname] = version
+	c.vcenterAPIVersion[hostname] = apiVersion
 }
 
 func (c *ClusterInfo) GetHostVersions() map[string]ESXiVersionInfo {
@@ -93,10 +106,14 @@ func (c *ClusterInfo) GetHostVersions() map[string]ESXiVersionInfo {
 	return hostVersions
 }
 
-func (c *ClusterInfo) GetVCenterVersion() (string, string) {
+func (c *ClusterInfo) GetVCenterHostnames() []string {
+	return c.vcenterHostnames
+}
+
+func (c *ClusterInfo) GetVCenterVersion(hostname string) (string, string) {
 	c.esxiVersionsLock.RLock()
 	defer c.esxiVersionsLock.RUnlock()
-	return c.vcenterVersion, c.vcenterAPIVersion
+	return c.vcenterVersion[hostname], c.vcenterAPIVersion[hostname]
 }
 
 func (c *ClusterInfo) Reset() {
@@ -104,8 +121,9 @@ func (c *ClusterInfo) Reset() {
 	defer c.esxiVersionsLock.Unlock()
 	c.esxiVersions = make(map[string]ESXiVersionInfo)
 	c.hwVersions = make(map[string]int)
-	c.vcenterVersion = ""
-	c.vcenterAPIVersion = ""
+	c.vcenterVersion = make(map[string]string)
+	c.vcenterAPIVersion = make(map[string]string)
+	c.vcenterHostnames = []string{}
 }
 
 func (c *ClusterInfo) MarkHostForProcessing(hostname string) (string, bool) {

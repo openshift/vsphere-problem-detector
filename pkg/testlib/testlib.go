@@ -3,32 +3,34 @@ package testlib
 import (
 	"context"
 	"crypto/tls"
+	"embed"
 	"fmt"
 	"os"
 	"path"
 	goruntime "runtime"
 
-	"github.com/vmware/govmomi/vapi/rest"
-	vapitags "github.com/vmware/govmomi/vapi/tags"
-
 	ocpv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/simulator"
-
-	// required to initialize the VAPI endpoint.
-	_ "github.com/vmware/govmomi/vapi/simulator"
+	"github.com/vmware/govmomi/vapi/rest"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"gopkg.in/gcfg.v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/legacy-cloud-providers/vsphere"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
+
+	// required to initialize the VAPI endpoint.
+	_ "github.com/vmware/govmomi/vapi/simulator"
 )
+
+//go:embed *.yaml *.ini
+var f embed.FS
 
 const (
 	DefaultModel    = "testlib/testdata/default"
@@ -72,78 +74,114 @@ func connectToSimulator(s *simulator.Server) (*vim25.Client, error) {
 	return client.Client, nil
 }
 
-func simulatorConfig() *vsphere.VSphereConfig {
-	var cfg vsphere.VSphereConfig
-	// Configuration that corresponds to the simulated vSphere
-	data := `[Global]
-secret-name = "vsphere-creds"
-secret-namespace = "kube-system"
-insecure-flag = "1"
-
-[Workspace]
-server = "localhost"
-datacenter = "DC0"
-default-datastore = "LocalDS_0"
-folder = "/DC0/vm"
-resourcepool-path = "/DC0/host/DC0_H0/Resources"
-
-[VirtualCenter "dc0"]
-datacenters = "DC0"
-`
-	err := gcfg.ReadStringInto(&cfg, data)
+func GetVSphereConfig(fileName string) *util.VSphereConfig {
+	var cfg util.VSphereConfig
+	err := cfg.LoadConfig(getVSphereConfigString(fileName))
 	if err != nil {
 		panic(err)
 	}
 	return &cfg
 }
 
+func getVSphereConfigString(fileName string) string {
+	if fileName == "" {
+		fileName = "simple_config.ini"
+	}
+	data, err := ReadFile(fileName)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
+// ReadFile reads and returns the content of the named file.
+func ReadFile(name string) ([]byte, error) {
+	return f.ReadFile(name)
+}
+
 type TestSetup struct {
 	Context     context.Context
-	Username    string
-	VMConfig    *vsphere.VSphereConfig
-	VMClient    *vim25.Client
-	TagManager  *vapitags.Manager
+	VMConfig    *util.VSphereConfig
+	VCenters    map[string]*VCenter
 	ClusterInfo *util.ClusterInfo
 }
 
-func SetupSimulator(kubeClient *FakeKubeClient, modelDir string) (setup *TestSetup, cleanup func(), err error) {
-	model := simulator.Model{}
-	err = model.Load(modelDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	model.Service.TLS = new(tls.Config)
-	model.Service.RegisterEndpoints = true
+type VCenter struct {
+	VMClient   *vim25.Client
+	TagManager *vapitags.Manager
+	Username   string
+}
 
-	s := model.Service.NewServer()
-	client, err := connectToSimulator(s)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to the simulator: %s", err)
+func SetupSimulator(kubeClient *FakeKubeClient, modelDir string) (setup *TestSetup, cleanup func(), err error) {
+	return SetupSimulatorWithConfig(kubeClient, modelDir, "")
+}
+
+func SetupSimulatorWithConfig(kubeClient *FakeKubeClient, modelDir, cloudConfig string) (setup *TestSetup, cleanup func(), err error) {
+	// Load config
+	vConfig := GetVSphereConfig(cloudConfig)
+	vcs := make(map[string]*VCenter)
+	var sessions []*simulator.Server
+	var models []*simulator.Model
+
+	// For now, we'll load the same model data for each vCenter, but just have each vCenter reference different datacenter,
+	// datastore, etc.
+	for vCenterName := range vConfig.Config.VirtualCenter {
+		model := simulator.Model{}
+		err = model.Load(modelDir)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		model.Service.TLS = new(tls.Config)
+		model.Service.RegisterEndpoints = true
+
+		s := model.Service.NewServer()
+		client, err := connectToSimulator(s)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect to the simulator: %s", err)
+		}
+
+		sessionMgr := session.NewManager(client)
+		userSession, err := sessionMgr.UserSession(context.TODO())
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to setup user session: %v", err)
+		}
+
+		restClient := rest.NewClient(client)
+		restClient.Login(context.TODO(), s.URL.User)
+
+		vcs[vCenterName] = &VCenter{
+			VMClient:   client,
+			TagManager: vapitags.NewManager(restClient),
+			Username:   userSession.UserName,
+		}
+
+		sessions = append(sessions, s)
+		models = append(models, &model)
 	}
+
 	clusterInfo := util.NewClusterInfo()
 
-	sessionMgr := session.NewManager(client)
-	userSession, err := sessionMgr.UserSession(context.TODO())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup user session: %v", err)
-	}
-
-	restClient := rest.NewClient(client)
-	restClient.Login(context.TODO(), s.URL.User)
 	testSetup := &TestSetup{
 		Context:     context.TODO(),
-		VMConfig:    simulatorConfig(),
-		TagManager:  vapitags.NewManager(restClient),
+		VMConfig:    GetVSphereConfig(cloudConfig),
 		ClusterInfo: clusterInfo,
-		VMClient:    client,
+		VCenters:    vcs,
 	}
-	testSetup.VMConfig.Workspace.VCenterIP = "dc0"
-	testSetup.VMConfig.VirtualCenter["dc0"].User = userSession.UserName
-	testSetup.Username = userSession.UserName
+
+	// Default config uses legacy config.  We can set this, but will check to make sure not missing
+	/*if testSetup.VMConfig.LegacyConfig != nil {
+		testSetup.VMConfig.LegacyConfig.Workspace.VCenterIP = "dc0"
+		testSetup.VMConfig.LegacyConfig.VirtualCenter["dc0"].User = userSession.UserName
+	}*/
 
 	cleanup = func() {
-		s.Close()
-		model.Remove()
+		for s := range sessions {
+			sessions[s].Close()
+		}
+		for model := range models {
+			models[model].Remove()
+		}
 	}
 	return testSetup, cleanup, nil
 }
@@ -207,6 +245,10 @@ func Infrastructure(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastruct
 			Name: "cluster",
 		},
 		Spec: ocpv1.InfrastructureSpec{
+			CloudConfig: ocpv1.ConfigMapFileReference{
+				Key:  "config",
+				Name: "cloud-provider-config",
+			},
 			PlatformSpec: ocpv1.PlatformSpec{
 				VSphere: &ocpv1.VSpherePlatformSpec{},
 			},
@@ -215,6 +257,121 @@ func Infrastructure(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastruct
 			InfrastructureName: "my-cluster-id",
 		},
 	}
+
+	for _, modifier := range modifiers {
+		modifier(infra)
+	}
+	return infra
+}
+
+func InfrastructureWithFailureDomain(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastructure {
+	infra := Infrastructure()
+
+	// Add failure domain
+	var fds []ocpv1.VSpherePlatformFailureDomainSpec
+	fds = append(fds, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "dc0",
+		Region: "east",
+		Server: "dc0",
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter: "DC0",
+			Datastore:  "LocalDS_0",
+		},
+		Zone: "east-1a",
+	})
+
+	infra.Spec.PlatformSpec.VSphere.FailureDomains = fds
+
+	// Add vCenters to vCenter section
+	infra.Spec.PlatformSpec.VSphere.VCenters = []ocpv1.VSpherePlatformVCenterSpec{
+		{
+			Server: "dc0",
+			Datacenters: []string{
+				"DC0",
+			},
+		},
+	}
+
+	for _, modifier := range modifiers {
+		modifier(infra)
+	}
+	return infra
+}
+
+func InfrastructureWithMultipleFailureDomain(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastructure {
+	infra := InfrastructureWithFailureDomain()
+
+	// Add failure domain
+	fds := infra.Spec.PlatformSpec.VSphere.FailureDomains
+	fds = append(fds, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "dc0",
+		Region: "west",
+		Server: "dc0",
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter: "DC1",
+			Datastore:  "LocalDS_1",
+		},
+		Zone: "west-1a",
+	})
+
+	infra.Spec.PlatformSpec.VSphere.FailureDomains = fds
+
+	for _, modifier := range modifiers {
+		modifier(infra)
+	}
+	return infra
+}
+
+func InfrastructureWithMultiVCenters(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastructure {
+	infra := Infrastructure()
+
+	// Add failure domain.
+	var fds []ocpv1.VSpherePlatformFailureDomainSpec
+
+	// Create FD for vCenter #1
+	fds = append(fds, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "failure-domain-1",
+		Region: "east",
+		Server: "vcenter.test.openshift.com",
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter: "DC0",
+			Datastore:  "LocalDS_0",
+		},
+		Zone: "east-1a",
+	})
+
+	// Create FD for vCenter #2
+	fds = append(fds, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "failure-domain-2",
+		Region: "west",
+		Server: "vcenter2.test.openshift.com",
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter: "DC1",
+			Datastore:  "LocalDS_0",
+		},
+		Zone: "west-1a",
+	})
+
+	// Add failure domains to spec
+	infra.Spec.PlatformSpec.VSphere.FailureDomains = fds
+
+	// Add vCenters to vCenter section
+	vcs := []ocpv1.VSpherePlatformVCenterSpec{
+		{
+			Server: "vcenter.test.openshift.com",
+			Datacenters: []string{
+				"DC0",
+			},
+		},
+		{
+			Server: "vcenter2.test.openshift.com",
+			Datacenters: []string{
+				"DC1",
+			},
+		},
+	}
+
+	infra.Spec.PlatformSpec.VSphere.VCenters = vcs
 
 	for _, modifier := range modifiers {
 		modifier(infra)

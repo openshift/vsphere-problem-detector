@@ -13,15 +13,15 @@ import (
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"k8s.io/client-go/kubernetes"
-
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 const (
-	resync               = 1 * time.Hour
-	operatorName         = "vSphereProblemDetector"
-	operatorNamespace    = "openshift-cluster-storage-operator"
-	cloudConfigNamespace = "openshift-config"
+	resync            = 1 * time.Hour
+	operatorName      = "vSphereProblemDetector"
+	operatorNamespace = "openshift-cluster-storage-operator"
 )
 
 func RunOperator(ctx context.Context, controllerConfig *controllercmd.ControllerContext) error {
@@ -29,7 +29,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	if err != nil {
 		return err
 	}
-	kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, cloudConfigNamespace, "")
+	kubeInformers := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, util.CloudConfigNamespace, "")
 
 	csiConfigClient, err := operatorclient.NewForConfig(controllerConfig.KubeConfig)
 	if err != nil {

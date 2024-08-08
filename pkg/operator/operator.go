@@ -18,16 +18,17 @@ import (
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
-	"github.com/openshift/vsphere-problem-detector/pkg/check"
-	"github.com/openshift/vsphere-problem-detector/pkg/log"
-	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	corelister "k8s.io/client-go/listers/core/v1"
 	storagelister "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
+	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 type vSphereProblemDetectorController struct {
@@ -103,7 +104,7 @@ func NewVSphereProblemDetectorController(
 	clusterCSIDriverInformer clustercsidriverinformer.ClusterCSIDriverInformer) factory.Controller {
 
 	secretInformer := namespacedInformer.InformersFor(operatorNamespace).Core().V1().Secrets()
-	cloudConfigMapInformer := namespacedInformer.InformersFor(cloudConfigNamespace).Core().V1().ConfigMaps()
+	cloudConfigMapInformer := namespacedInformer.InformersFor(util.CloudConfigNamespace).Core().V1().ConfigMaps()
 	nodeInformer := namespacedInformer.InformersFor("").Core().V1().Nodes()
 	pvInformer := namespacedInformer.InformersFor("").Core().V1().PersistentVolumes()
 	scInformer := namespacedInformer.InformersFor("").Storage().V1().StorageClasses()
@@ -168,9 +169,11 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	log.Silenced = ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
 
 	clusterInfo := util.NewClusterInfo()
+
+	// We need to run checks against all vCenters.  We'll have each check run against a single vCenter.
 	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
 
-	// if no checks were performed don't update conditons
+	// if no checks were performed don't update conditions
 	if !checkPerformed {
 		return nil
 	}
@@ -257,14 +260,16 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 		}
 	}
 
-	_, vcenterAPIVersion := clusterInfo.GetVCenterVersion()
-	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterAPIVersion)
-	if err != nil {
-		log.Logf("error parsing vcenter version: %v", err)
-	}
+	for _, vCenter := range clusterInfo.GetVCenterHostnames() {
+		_, vcenterAPIVersion := clusterInfo.GetVCenterVersion(vCenter)
+		hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterAPIVersion)
+		if err != nil {
+			log.Logf("error parsing vcenter version: %v", err)
+		}
 
-	if !hasMinimum {
-		return true, fmt.Sprintf("connected vcenter is on %s version", vcenterAPIVersion)
+		if !hasMinimum {
+			return true, fmt.Sprintf("connected vcenter %s is on %s version", vCenter, vcenterAPIVersion)
+		}
 	}
 
 	return false, ""
