@@ -17,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
@@ -359,7 +360,7 @@ func checkForDatastoreCluster(ctx *CheckContext, dsMo mo.Datastore, dataStoreNam
 			if err != nil {
 				// we may not have permissions to fetch unrelated datastores in OCP
 				// and hence we are going to ignore the error.
-				klog.Errorf("fetching datastore %s failed: %v", child.String(), err)
+				log.Logf("fetching datastore %s failed: %v", child.String(), err)
 				continue
 			}
 			if tDS.Summary.Url == dsMo.Summary.Url {

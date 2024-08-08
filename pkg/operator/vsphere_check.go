@@ -13,6 +13,7 @@ import (
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
 	"github.com/vmware/govmomi"
@@ -53,7 +54,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 
 	defer func() {
 		if err := checkContext.GovmomiClient.Logout(ctx); err != nil {
-			klog.Errorf("Failed to logout: %v", err)
+			log.Logf("Failed to logout: %v", err)
 		}
 	}()
 
@@ -88,7 +89,7 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 
 	klog.V(4).Infof("Waiting for all checks")
 	if err := checkRunner.Wait(ctx); err != nil {
-		klog.Errorf("error waiting for metrics checks to finish: %v", err)
+		log.Logf("error waiting for metrics checks to finish: %v", err)
 		v.controller.metricsCollector.FinishedAllChecks()
 		return resultCollector, err
 	}

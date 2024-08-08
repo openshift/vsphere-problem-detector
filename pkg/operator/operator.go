@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/check"
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/metrics"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -164,10 +165,10 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	if err != nil {
 		return err
 	}
-	silenced := ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
+	log.Silenced = ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
 
 	clusterInfo := util.NewClusterInfo()
-	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo, silenced)
+	delay, lastCheckResult, checkPerformed := c.runSyncChecks(ctx, clusterInfo)
 
 	// if no checks were performed don't update conditons
 	if !checkPerformed {
@@ -206,16 +207,16 @@ func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context,
 }
 
 // runSyncChecks runs vsphere checks and return next duration and whether checks were actually ran.
-func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo, silenced bool) (time.Duration, clusterCheckResult, bool) {
+func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, clusterCheckResult, bool) {
 	var delay time.Duration
 	var lastCheckResult clusterCheckResult
 	if !time.Now().After(c.nextCheck) {
 		return delay, lastCheckResult, false
 	}
 
-	delay, err := c.runChecks(ctx, clusterInfo, silenced)
+	delay, err := c.runChecks(ctx, clusterInfo)
 	if err != nil {
-		klog.Errorf("failed to run checks: %s", err)
+		log.Logf("failed to run checks: %s", err)
 		lastCheckResult.checkError = err
 		syncErrrorMetric.WithLabelValues("SyncError").Set(1)
 	} else {
@@ -225,7 +226,7 @@ func (c *vSphereProblemDetectorController) runSyncChecks(ctx context.Context, cl
 	lastCheckResult.blockUpgrade, lastCheckResult.blockUpgradeReason = c.checkForDeprecation(clusterInfo)
 	// if we are going to block upgrades but there was no error
 	// then we should try more frequently in case node/cluster status is updated
-	if lastCheckResult.blockUpgrade && err == nil && !silenced {
+	if lastCheckResult.blockUpgrade && err == nil && !log.Silenced {
 		delay = c.backoff.Step()
 	}
 	return delay, lastCheckResult, true
@@ -236,7 +237,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 	for host, esxiVersion := range esxiVersions {
 		hasMinimum, err := isMinimumVersion(minHostVersion, esxiVersion.APIVersion)
 		if err != nil {
-			klog.Errorf("error parsing host version: %v", err)
+			log.Logf("error parsing host version: %v", err)
 			continue
 		}
 		if !hasMinimum {
@@ -248,7 +249,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 		vmHWVersion := strings.Trim(hwVersion, hardwareVersionPrefix)
 		versionInt, err := strconv.ParseInt(vmHWVersion, 0, 64)
 		if err != nil {
-			klog.Errorf("error parsing hardware version %s: %v", hwVersion, err)
+			log.Logf("error parsing hardware version %s: %v", hwVersion, err)
 			continue
 		}
 		if versionInt < minHardwareVersion {
@@ -259,7 +260,7 @@ func (c *vSphereProblemDetectorController) checkForDeprecation(clusterInfo *util
 	_, vcenterAPIVersion := clusterInfo.GetVCenterVersion()
 	hasMinimum, err := isMinimumVersion(minVCenterVersion, vcenterAPIVersion)
 	if err != nil {
-		klog.Errorf("error parsing vcenter version: %v", err)
+		log.Logf("error parsing vcenter version: %v", err)
 	}
 
 	if !hasMinimum {
@@ -293,7 +294,7 @@ func parseForSemver(version string) string {
 	return version
 }
 
-func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo, silenced bool) (time.Duration, error) {
+func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (time.Duration, error) {
 	// pre-calculate exp. backoff on error
 	nextErrorDelay := c.backoff.Step()
 	c.lastCheck = time.Now()
@@ -306,9 +307,11 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 	klog.V(4).Infof("All checks complete")
 
 	results, checkError := resultCollector.Collect()
-	c.reportResults(results)
+	if !log.Silenced {
+		c.reportResults(results)
+	}
 	var nextDelay time.Duration
-	if checkError != nil && !silenced {
+	if checkError != nil && !log.Silenced {
 		// Use exponential backoff
 		nextDelay = nextErrorDelay
 	} else {
@@ -316,7 +319,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 		c.backoff = defaultBackoff
 		// Delay after success is after the maximum backoff
 		// (i.e. retry as slow as allowed).
-		if silenced {
+		if log.Silenced {
 			nextDelay = silencedCap
 		} else {
 			nextDelay = defaultBackoff.Cap

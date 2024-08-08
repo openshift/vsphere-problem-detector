@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -131,7 +132,7 @@ func (c *vSphereCache) getDatastoresLocked(ctx context.Context, dcName string) (
 	finder.SetDatacenter(cdc.dc)
 	datastores, err := finder.DatastoreList(tctx, "*")
 	if err != nil {
-		klog.Errorf("failed to get all the datastores. err: %+v", err)
+		log.Logf("failed to get all the datastores. err: %+v", err)
 		return nil, err
 	}
 
@@ -145,7 +146,7 @@ func (c *vSphereCache) getDatastoresLocked(ctx context.Context, dcName string) (
 	properties := []string{DatastoreInfoProperty, SummaryProperty, "customValue"}
 	err = pc.Retrieve(tctx, dsList, properties, &dsMoList)
 	if err != nil {
-		klog.Errorf("failed to get Datastore managed objects from datastore objects."+
+		log.Logf("failed to get Datastore managed objects from datastore objects."+
 			" dsObjList: %+v, properties: %+v, err: %v", dsList, properties, err)
 		return nil, err
 	}
@@ -283,7 +284,7 @@ func (c *vSphereCache) GetStoragePods(ctx context.Context) ([]mo.StoragePod, err
 	defer cancel()
 	v, err := m.CreateContainerView(tctx, c.vmClient.ServiceContent.RootFolder, kind, true)
 	if err != nil {
-		klog.Errorf("error listing datastore cluster: %+v", err)
+		log.Logf("error listing datastore cluster: %+v", err)
 		// Don't alert on missing permissions
 		return nil, nil
 	}
@@ -296,7 +297,7 @@ func (c *vSphereCache) GetStoragePods(ctx context.Context) ([]mo.StoragePod, err
 	defer cancel()
 	err = v.Retrieve(tctx, kind, []string{SummaryProperty, "childEntity"}, &content)
 	if err != nil {
-		klog.Errorf("error retrieving datastore cluster properties: %+v", err)
+		log.Logf("error retrieving datastore cluster properties: %+v", err)
 		// it is possible that we do not actually have permission to fetch datastore clusters
 		// in which case rather than throwing an error - we will silently return nil, so as
 		// we don't trigger unnecessary alerts.
