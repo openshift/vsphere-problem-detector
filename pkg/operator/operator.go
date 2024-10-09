@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ type vSphereProblemDetectorController struct {
 	scLister               storagelister.StorageClassLister
 	cloudConfigMapLister   corelister.ConfigMapLister
 	clusterCSIDriverLister operatorlister.ClusterCSIDriverLister
+	oldManagedState        operatorapi.ManagementState
 
 	metricsCollector *metrics.Collector
 
@@ -168,6 +170,11 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 	}
 	log.Silenced = ccd.Spec.OperatorSpec.ManagementState == operatorapi.Removed
 
+	if c.checkStateChange(ccd.Spec.OperatorSpec.ManagementState) {
+		klog.V(2).Infof("Restarting operator due to ManagementState being changed from Managed to Removed or vice versa")
+		os.Exit(0)
+	}
+
 	clusterInfo := util.NewClusterInfo()
 
 	// We need to run checks against all vCenters.  We'll have each check run against a single vCenter.
@@ -187,6 +194,19 @@ func (c *vSphereProblemDetectorController) sync(ctx context.Context, syncCtx fac
 		queue.Add(queueKey)
 	})
 	return c.updateConditions(ctx, lastCheckResult)
+}
+
+func (c *vSphereProblemDetectorController) checkStateChange(ManagedState operatorapi.ManagementState) bool {
+	if c.oldManagedState == "" {
+		c.oldManagedState = ManagedState
+		return false
+	}
+	if (c.oldManagedState == operatorapi.Managed && ManagedState == operatorapi.Removed) || (c.oldManagedState == operatorapi.Removed && ManagedState == operatorapi.Managed) {
+		c.oldManagedState = ManagedState
+		return true
+	}
+	c.oldManagedState = ManagedState
+	return false
 }
 
 func (c *vSphereProblemDetectorController) updateConditions(ctx context.Context, lastCheckResult clusterCheckResult) error {
