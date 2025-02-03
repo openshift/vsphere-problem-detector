@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -19,7 +20,11 @@ type validationContext struct {
 	reference           vim25types.ManagedObjectReference
 	regionTagCategoryID string
 	zoneTagCategoryID   string
+	zoneAffinity        *v1.VSphereFailureDomainZoneAffinity
+	regionAffinity      *v1.VSphereFailureDomainRegionAffinity
 	vCenter             *VCenter
+	failureDomain       *v1.VSpherePlatformFailureDomainSpec
+	computeCluster      *object.ClusterComputeResource
 }
 
 const (
@@ -68,6 +73,8 @@ func validateTagCategories(ctx *CheckContext, vCenter *VCenter) (string, string,
 func validateTagAttachment(ctx *CheckContext, vctx validationContext) error {
 	klog.V(2).Infof("Validating tags for %s.", vctx.reference)
 	referencesToCheck := []mo.Reference{vctx.reference}
+	fd := vctx.failureDomain
+
 	ancestors, err := getAncestors(ctx, vctx)
 	if err != nil {
 		klog.Error("Unable to get ancestors.")
@@ -91,14 +98,33 @@ func validateTagAttachment(ctx *CheckContext, vctx validationContext) error {
 			klog.V(5).Infof("Current tag: %s", tag)
 			if !regionTagAttached {
 				if tag.CategoryID == vctx.regionTagCategoryID {
-					regionTagAttached = true
-					klog.V(4).Infof("Found Region: %s", tag.Name)
+					if fd.RegionAffinity != nil && fd.RegionAffinity.Type == v1.DatacenterFailureDomainRegion {
+						if attachedTag.ObjectID.Reference().Type == "Datacenter" {
+							regionTagAttached = true
+							klog.V(4).Infof("found region tag %s attached to datacenter(affinity == Datacenter): %v", tag.Name, attachedTag.ObjectID)
+						}
+					} else if fd.RegionAffinity != nil && fd.RegionAffinity.Type == v1.ComputeClusterFailureDomainRegion {
+						if attachedTag.ObjectID.Reference().Type == "ClusterComputeResource" {
+							regionTagAttached = true
+							klog.V(4).Infof("found region tag %s attached to compute cluster(affinity == ComputeCluster): %v", tag.Name, attachedTag.ObjectID)
+						}
+					} else {
+						regionTagAttached = true
+						klog.V(4).Infof("found region tag attached to: %v", attachedTag.ObjectID)
+					}
 				}
 			}
 			if !zoneTagAttached {
 				if tag.CategoryID == vctx.zoneTagCategoryID {
-					zoneTagAttached = true
-					klog.V(4).Infof("Found Zone: %s", tag.Name)
+					if fd.ZoneAffinity != nil && fd.ZoneAffinity.Type == v1.ComputeClusterFailureDomainZone {
+						if attachedTag.ObjectID.Reference().Type == "ClusterComputeResource" {
+							zoneTagAttached = true
+							klog.V(4).Infof("found zone tag %s attached to compute cluster(affinity == ComputeCluster): %v", tag.Name, attachedTag.ObjectID)
+						}
+					} else {
+						zoneTagAttached = true
+						klog.V(4).Infof("found zone tag attached to: %v", attachedTag.ObjectID)
+					}
 				}
 			}
 			if regionTagAttached && zoneTagAttached {
@@ -203,8 +229,12 @@ func CheckZoneTags(ctx *CheckContext) error {
 			validationCtx := validationContext{
 				reference:           computeResourceMo.Reference(),
 				regionTagCategoryID: vCenterRegionCategories[fd.Server],
+				regionAffinity:      fd.RegionAffinity,
+				zoneAffinity:        fd.ZoneAffinity,
 				vCenter:             ctx.VCenters[fd.Server],
 				zoneTagCategoryID:   vCenterZoneCategories[fd.Server],
+				failureDomain:       &fd,
+				computeCluster:      computeResourceMo,
 			}
 
 			// Validate tags for the current ComputeCluster

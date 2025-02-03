@@ -24,3 +24,11 @@ func join(errs []error) error {
 	}
 	return errors.New(strings.Join(s, ";\n"))
 }
+
+func joinWithSeparator(errs []error, separator string) error {
+	var s []string
+	for _, err := range errs {
+		s = append(s, err.Error())
+	}
+	return errors.New(strings.Join(s, separator))
+}
