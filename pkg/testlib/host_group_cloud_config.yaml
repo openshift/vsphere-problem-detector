@@ -1,0 +1,36 @@
+global:
+  user: ""
+  password: ""
+  server: ""
+  port: 0
+  insecureFlag: true
+  datacenters: []
+  soapRoundtripCount: 0
+  caFile: ""
+  thumbprint: ""
+  secretName: vsphere-creds
+  secretNamespace: kube-system
+  secretsDirectory: ""
+  apiDisable: false
+  apiBinding: ""
+  ipFamily: []
+vcenter:
+  dc0:
+    user: ""
+    password: ""
+    tenantref: ""
+    server: dc0
+    port: 443
+    insecureFlag: true
+    datacenters:
+    - cidatacenter-nested-0
+    soapRoundtripCount: 0
+    caFile: ""
+    thumbprint: ""
+    secretref: ""
+    secretName: ""
+    secretNamespace: ""
+    ipFamily: []
+labels:
+  zone: openshift-zone
+  region: openshift-region

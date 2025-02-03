@@ -2,9 +2,10 @@ package check
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
-	"testing"
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,6 +15,46 @@ import (
 	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/openshift/vsphere-problem-detector/pkg/testlib"
 )
+
+type SimulatorAction string
+type SimulatorSetSearchResult int64
+
+const (
+	SimulatorNoVmRule           = SimulatorAction("NO_VM_RULE")
+	SimulatorNoVmGroup          = SimulatorAction("NO_VM_GROUP")
+	SimulatorNoHostsInHostGroup = SimulatorAction("NO_HOSTS_IN_HOST_GROUP")
+	SimulatorNoHostGroup        = SimulatorAction("NO_HOSTS_GROUP")
+
+	SimulatorSkipAttachHostTag            = SimulatorAction("SKIP_HOST_TAG")
+	SimulatorSkipAttachDatacenterTag      = SimulatorAction("SKIP_DATACENTER_TAG")
+	SimulatorSkipAttachClusterTag         = SimulatorAction("SKIP_CLUSTER_TAG")
+	SimulatorForceAttachClusterTag        = SimulatorAction("FORCE_CLUSTER_TAG")
+	SimulatorSkipCreateZoneTagCategeory   = SimulatorAction("SKIP_ZONE_TAG_CATEGORY")
+	SimulatorSkipCreateZoneTag            = SimulatorAction("SKIP_ZONE_TAG")
+	SimulatorSkipCreateRegionTagCategeory = SimulatorAction("SKIP_REGION_TAG_CATEGORY")
+	SimulatorSkipCreateRegionTag          = SimulatorAction("SKIP_REGION_TAG")
+	SimulatorSkipAttachRegionTag          = SimulatorAction("SKIP_ATTACH_REGION_TAG")
+	SimulatorSkipAttachZoneTag            = SimulatorAction("SKIP_ATTACH_ZONE_TAG")
+
+	SimulatorZoneAffinityHostGroup = SimulatorAction("ZONE_AFFINITY_HOST_GROUP")
+	SimulatorRegionAffinityCluster = SimulatorAction("REGION_AFFINITY_CLUSTER")
+
+	SimulatorSetEmpty          = SimulatorSetSearchResult(0)
+	SimulatorSetResultFound    = SimulatorSetSearchResult(1)
+	SimulatorSetResultNotFound = SimulatorSetSearchResult(2)
+)
+
+func IsSet(action SimulatorAction, actions []SimulatorAction) SimulatorSetSearchResult {
+	if len(actions) == 0 {
+		return SimulatorSetEmpty
+	}
+	for _, _action := range actions {
+		if action == _action {
+			return SimulatorSetResultFound
+		}
+	}
+	return SimulatorSetResultNotFound
+}
 
 func SetupSimulator(kubeClient *testlib.FakeKubeClient, modelDir string) (ctx *CheckContext, cleanup func(), err error) {
 	return SetupSimulatorWithConfig(kubeClient, modelDir, "")
@@ -31,6 +72,7 @@ func SetupSimulatorWithConfig(kubeClient *testlib.FakeKubeClient, modelDir, conf
 			VMClient:    setup.VCenters[vCenterName].VMClient,
 			Cache:       cache.NewCheckCache(setup.VCenters[vCenterName].VMClient),
 			Username:    setup.VCenters[vCenterName].Username,
+			Model:       setup.VCenters[vCenterName].Model,
 		}
 		vcMap[vCenterName] = &vc
 	}
