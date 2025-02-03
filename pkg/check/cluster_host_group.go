@@ -94,7 +94,10 @@ func CheckHostGroups(ctx *CheckContext) error {
 				hostsInGroup = append(hostsInGroup, group.(*vim25types.ClusterHostGroup).Host...)
 
 			case *vim25types.ClusterVmGroup:
-				vmGroupPresent = groupInfo.Name == fd.ZoneAffinity.HostGroup.VMGroup
+				if groupInfo.Name == fd.ZoneAffinity.HostGroup.VMGroup {
+					vmGroupPresent = true
+				}
+
 			default:
 				klog.V(2).Infof("unsupported group type %v", groupType)
 			}
@@ -104,7 +107,10 @@ func CheckHostGroups(ctx *CheckContext) error {
 			ruleInfo := rule.GetClusterRuleInfo()
 			switch ruleType := rule.(type) {
 			case *vim25types.ClusterVmHostRuleInfo:
-				vmRulePresent = ruleInfo.Name == fd.ZoneAffinity.HostGroup.VMHostRule
+				if ruleInfo.Name == fd.ZoneAffinity.HostGroup.VMHostRule {
+					vmRulePresent = true
+				}
+				break
 			default:
 				klog.V(2).Infof("unsupported rule type %v", ruleType)
 			}
