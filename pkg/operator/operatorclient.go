@@ -4,10 +4,13 @@ import (
 	"context"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	applyoperatorv1 "github.com/openshift/client-go/operator/applyconfigurations/operator/v1"
 	operatorconfigclient "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	operatorclientinformers "github.com/openshift/client-go/operator/informers/externalversions"
+	"github.com/openshift/library-go/pkg/apiserver/jsonpatch"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -92,4 +95,30 @@ func (c OperatorClient) GetOperatorStateWithQuorum(ctx context.Context) (*operat
 	}
 
 	return &instance.Spec.OperatorSpec, &instance.Status.OperatorStatus, instance.GetResourceVersion(), nil
+}
+
+func (c OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, applyConfiguration *applyoperatorv1.OperatorSpecApplyConfiguration) error {
+	desiredSpecApplyConf := &applyoperatorv1.StorageApplyConfiguration{
+		Spec: &applyoperatorv1.StorageSpecApplyConfiguration{OperatorSpecApplyConfiguration: *applyConfiguration},
+	}
+	_, err := c.Client.Storages().Apply(ctx, desiredSpecApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
+	return err
+}
+
+func (c OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, applyConfiguration *applyoperatorv1.OperatorStatusApplyConfiguration) error {
+	desiredStatusApplyConf := &applyoperatorv1.StorageApplyConfiguration{
+		Status: &applyoperatorv1.StorageStatusApplyConfiguration{OperatorStatusApplyConfiguration: *applyConfiguration},
+	}
+
+	_, err := c.Client.Storages().ApplyStatus(ctx, desiredStatusApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
+	return err
+}
+
+func (c OperatorClient) PatchOperatorStatus(ctx context.Context, jsonPatch *jsonpatch.PatchSet) error {
+	jsonPatchData, err := jsonPatch.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = c.Client.Storages().Patch(ctx, globalConfigName, types.JSONPatchType, jsonPatchData, metav1.PatchOptions{}, "/status")
+	return err
 }

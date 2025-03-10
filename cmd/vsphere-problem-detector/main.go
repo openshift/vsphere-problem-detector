@@ -11,6 +11,7 @@ import (
 
 	"github.com/openshift/vsphere-problem-detector/pkg/operator"
 	"github.com/openshift/vsphere-problem-detector/pkg/version"
+	"k8s.io/utils/clock"
 )
 
 func main() {
@@ -33,6 +34,7 @@ func NewOperatorCommand() *cobra.Command {
 		"vsphere-problem-detector",
 		version.Get(),
 		operator.RunOperator,
+		clock.RealClock{},
 	).NewCommand()
 	ctrlCmd.Use = "start"
 	ctrlCmd.Short = "Start the vSphere Problem Detector"

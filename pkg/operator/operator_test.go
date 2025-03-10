@@ -14,10 +14,10 @@ import (
 	opinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	clocktesting "k8s.io/utils/clock/testing"
 )
 
 func TestCheckForDeprecation(t *testing.T) {
@@ -248,7 +248,7 @@ func TestSyncChecks(t *testing.T) {
 					return &testvSphereChecker{err: tc.checkError}
 				},
 				backoff:       defaultBackoff,
-				eventRecorder: events.NewInMemoryRecorder("vsphere-problem-detector"),
+				eventRecorder: events.NewInMemoryRecorder("vsphere-problem-detector", clocktesting.NewFakePassiveClock(time.Now())),
 			}
 
 			// if we sho	uld not perform checks, add randomly 10s to next check duration
@@ -373,10 +373,10 @@ func TestSync(t *testing.T) {
 				clusterCSIDriverLister: clusterCSIDriverInformer.Lister(),
 				infraLister:            &testInfraLister{},
 				backoff:                defaultBackoff,
-				eventRecorder:          events.NewInMemoryRecorder("vsphere-problem-detector"),
+				eventRecorder:          events.NewInMemoryRecorder("vsphere-problem-detector", clocktesting.NewFakePassiveClock(time.Now())),
 			}
 
-			err := vsphereProblemOperator.sync(context.TODO(), factory.NewSyncContext(controllerName, events.NewInMemoryRecorder("test-csi-driver")))
+			err := vsphereProblemOperator.sync(context.TODO(), factory.NewSyncContext(controllerName, events.NewInMemoryRecorder("test-csi-driver", clocktesting.NewFakePassiveClock(time.Now()))))
 			if err != nil {
 				// sync() should always succeed, regardless if the checks succeeded or not
 				t.Errorf("sync returned unexpected error: %s", err)

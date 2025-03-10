@@ -41,6 +41,7 @@ type PropertyCollector struct {
 	mo.PropertyCollector
 
 	nopLocker
+	pending *types.UpdateSet
 	updates []types.ObjectUpdate
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -470,7 +471,10 @@ func (rr *retrieveResult) collect(ctx *Context, ref types.ManagedObjectReference
 	}
 
 	if match {
-		rr.Objects = append(rr.Objects, content)
+		// Copy while content.Obj is locked, as it won't be when final results are encoded.
+		var dst types.ObjectContent
+		deepCopy(&content, &dst)
+		rr.Objects = append(rr.Objects, dst)
 	}
 
 	rr.collected[ref] = true
@@ -514,7 +518,7 @@ func (rr *retrieveResult) selectSet(ctx *Context, obj reflect.Value, s []types.B
 	return nil
 }
 
-func (pc *PropertyCollector) collect(ctx *Context, r *types.RetrievePropertiesEx) (*types.RetrieveResult, types.BaseMethodFault) {
+func collect(ctx *Context, r *types.RetrievePropertiesEx) (*types.RetrieveResult, types.BaseMethodFault) {
 	var refs []types.ManagedObjectReference
 
 	rr := &retrieveResult{
@@ -570,6 +574,8 @@ func (pc *PropertyCollector) CreateFilter(ctx *Context, c *types.CreateFilter) s
 		Returnval: filter.Self,
 	}
 
+	ctx.Map.AddHandler(filter)
+
 	return body
 }
 
@@ -591,8 +597,7 @@ func (pc *PropertyCollector) DestroyPropertyCollector(ctx *Context, c *types.Des
 	body := &methods.DestroyPropertyCollectorBody{}
 
 	for _, ref := range pc.Filter {
-		filter := ctx.Session.Get(ref).(*PropertyFilter)
-		filter.DestroyPropertyFilter(ctx, &types.DestroyPropertyFilter{This: ref})
+		ctx.Session.Remove(ctx, ref)
 	}
 
 	ctx.Session.Remove(ctx, c.This)
@@ -662,7 +667,7 @@ func (pc *PropertyCollector) ContinueRetrievePropertiesEx(ctx *Context, r *types
 func (pc *PropertyCollector) RetrievePropertiesEx(ctx *Context, r *types.RetrievePropertiesEx) soap.HasFault {
 	body := &methods.RetrievePropertiesExBody{}
 
-	res, fault := pc.collect(ctx, r)
+	res, fault := collect(ctx, r)
 
 	if fault != nil {
 		switch fault.(type) {
@@ -758,7 +763,7 @@ func (pc *PropertyCollector) PutObject(o mo.Reference) {
 	})
 }
 
-func (pc *PropertyCollector) UpdateObject(o mo.Reference, changes []types.PropertyChange) {
+func (pc *PropertyCollector) UpdateObject(_ *Context, o mo.Reference, changes []types.PropertyChange) {
 	pc.update(types.ObjectUpdate{
 		Obj:       o.Reference(),
 		Kind:      types.ObjectUpdateKindModify,
@@ -776,12 +781,12 @@ func (pc *PropertyCollector) RemoveObject(_ *Context, ref types.ManagedObjectRef
 
 func (pc *PropertyCollector) apply(ctx *Context, update *types.UpdateSet) types.BaseMethodFault {
 	for _, ref := range pc.Filter {
-		filter := ctx.Session.Get(ref).(*PropertyFilter)
+		filter, ok := ctx.Session.Get(ref).(*PropertyFilter)
+		if !ok {
+			continue
+		}
 
-		r := &types.RetrievePropertiesEx{}
-		r.SpecSet = append(r.SpecSet, filter.Spec)
-
-		res, fault := pc.collect(ctx, r)
+		res, fault := filter.collect(ctx)
 		if fault != nil {
 			return fault
 		}
@@ -818,9 +823,47 @@ func (pc *PropertyCollector) apply(ctx *Context, update *types.UpdateSet) types.
 	return nil
 }
 
+// pageUpdateSet limits the given UpdateSet to max number of object updates.
+// nil is returned when not truncated, otherwise the remaining UpdateSet.
+func pageUpdateSet(update *types.UpdateSet, max int) *types.UpdateSet {
+	for i := range update.FilterSet {
+		set := update.FilterSet[i].ObjectSet
+		n := len(set)
+		if n+1 > max {
+			update.Truncated = types.NewBool(true)
+			f := types.PropertyFilterUpdate{
+				Filter:    update.FilterSet[i].Filter,
+				ObjectSet: update.FilterSet[i].ObjectSet[max:],
+			}
+			update.FilterSet[i].ObjectSet = update.FilterSet[i].ObjectSet[:max]
+
+			pending := &types.UpdateSet{
+				Version:   "P",
+				FilterSet: []types.PropertyFilterUpdate{f},
+			}
+
+			if len(update.FilterSet) > i {
+				pending.FilterSet = append(pending.FilterSet, update.FilterSet[i+1:]...)
+				update.FilterSet = update.FilterSet[:i+1]
+			}
+
+			return pending
+		}
+		max -= n
+	}
+	return nil
+}
+
+// WaitOptions.maxObjectUpdates says:
+// > PropertyCollector policy may still limit the total count
+// > to something less than maxObjectUpdates.
+// Seems to be "may" == "will" and the default max is 100.
+const defaultMaxObjectUpdates = 100 // vCenter's default
+
 func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpdatesEx) soap.HasFault {
 	wait, cancel := context.WithCancel(context.Background())
 	oneUpdate := false
+	maxObject := defaultMaxObjectUpdates
 	if r.Options != nil {
 		if max := r.Options.MaxWaitSeconds; max != nil {
 			// A value of 0 causes WaitForUpdatesEx to do one update calculation and return any results.
@@ -828,6 +871,9 @@ func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpda
 			if *max > 0 {
 				wait, cancel = context.WithTimeout(context.Background(), time.Second*time.Duration(*max))
 			}
+		}
+		if max := r.Options.MaxObjectUpdates; max > 0 && max < defaultMaxObjectUpdates {
+			maxObject = int(max)
 		}
 	}
 	pc.mu.Lock()
@@ -844,6 +890,12 @@ func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpda
 		Returnval: set,
 	}
 
+	if pc.pending != nil {
+		body.Res.Returnval = pc.pending
+		pc.pending = pageUpdateSet(body.Res.Returnval, maxObject)
+		return body
+	}
+
 	apply := func() bool {
 		if fault := pc.apply(ctx, set); fault != nil {
 			body.Fault_ = Fault("", fault)
@@ -857,6 +909,9 @@ func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpda
 		ctx.Map.AddHandler(pc) // Listen for create, update, delete of managed objects
 		apply()                // Collect current state
 		set.Version = "-"      // Next request with Version set will wait via loop below
+		if body.Res != nil {
+			pc.pending = pageUpdateSet(body.Res.Returnval, maxObject)
+		}
 		return body
 	}
 
@@ -897,6 +952,7 @@ func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpda
 
 			for _, f := range pc.Filter {
 				filter := ctx.Session.Get(f).(*PropertyFilter)
+				filter.update(ctx)
 				fu := types.PropertyFilterUpdate{Filter: f}
 
 				for _, update := range updates {
@@ -932,6 +988,7 @@ func (pc *PropertyCollector) WaitForUpdatesEx(ctx *Context, r *types.WaitForUpda
 				}
 			}
 			if len(set.FilterSet) != 0 {
+				pc.pending = pageUpdateSet(body.Res.Returnval, maxObject)
 				return body
 			}
 			if oneUpdate {
