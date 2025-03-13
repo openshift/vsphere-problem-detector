@@ -1,18 +1,6 @@
-/*
-Copyright (c) 2017-2023 VMware, Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// © Broadcom. All Rights Reserved.
+// The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: Apache-2.0
 
 package simulator
 
@@ -152,7 +140,12 @@ func (s *Service) call(ctx *Context, method *Method) soap.HasFault {
 
 	if session == nil {
 		switch method.Name {
-		case "RetrieveServiceContent", "PbmRetrieveServiceContent", "Fetch", "List", "Login", "LoginByToken", "LoginExtensionByCertificate", "RetrieveProperties", "RetrievePropertiesEx", "CloneSession":
+		case
+			"Login", "LoginByToken", "LoginExtensionByCertificate", "CloneSession", // SessionManager
+			"RetrieveServiceContent", "RetrieveInternalContent", "PbmRetrieveServiceContent", // ServiceContent
+			"Fetch", "RetrieveProperties", "RetrievePropertiesEx", // PropertyCollector
+			"List",                   // lookup service
+			"GetTrustedCertificates": // ssoadmin
 			// ok for now, TODO: authz
 		default:
 			fault := &types.NotAuthenticated{
@@ -315,16 +308,29 @@ type response struct {
 }
 
 func (r *response) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	val := reflect.ValueOf(r.Body).Elem().FieldByName("Res")
+	body := reflect.ValueOf(r.Body).Elem()
+	val := body.FieldByName("Res")
 	if !val.IsValid() {
 		return fmt.Errorf("%T: invalid response type (missing 'Res' field)", r.Body)
 	}
 	if val.IsNil() {
 		return fmt.Errorf("%T: invalid response (nil 'Res' field)", r.Body)
 	}
+
+	// Default response namespace
+	ns := "urn:" + r.Namespace
+	// Override namespace from struct tag if defined
+	field, _ := body.Type().FieldByName("Res")
+	if tag := field.Tag.Get("xml"); tag != "" {
+		tags := strings.Split(tag, " ")
+		if len(tags) > 0 && strings.HasPrefix(tags[0], "urn") {
+			ns = tags[0]
+		}
+	}
+
 	res := xml.StartElement{
 		Name: xml.Name{
-			Space: "urn:" + r.Namespace,
+			Space: ns,
 			Local: val.Elem().Type().Name(),
 		},
 	}
@@ -484,7 +490,6 @@ func (s *Service) ServeSDK(w http.ResponseWriter, r *http.Request) {
 		Map:     s.sdk[r.URL.Path],
 		Context: context.Background(),
 	}
-	ctx.Map.WithLock(ctx, s.sm, ctx.mapSession)
 
 	var res soap.HasFault
 	var soapBody interface{}
@@ -498,6 +503,7 @@ func (s *Service) ServeSDK(w http.ResponseWriter, r *http.Request) {
 			// Redirect any Fetch method calls to the PropertyCollector singleton
 			method.This = ctx.Map.content().PropertyCollector
 		}
+		ctx.Map.WithLock(ctx, s.sm, ctx.mapSession)
 		res = s.call(ctx, method)
 	}
 
@@ -960,4 +966,20 @@ func UnmarshalBody(typeFunc func(string) (reflect.Type, bool), data []byte) (*Me
 	method.This = field.Interface().(types.ManagedObjectReference)
 
 	return method, nil
+}
+
+func newInvalidStateFault(format string, args ...any) *types.InvalidState {
+	msg := fmt.Sprintf(format, args...)
+	return &types.InvalidState{
+		VimFault: types.VimFault{
+			MethodFault: types.MethodFault{
+				FaultCause: &types.LocalizedMethodFault{
+					Fault: &types.SystemErrorFault{
+						Reason: msg,
+					},
+					LocalizedMessage: msg,
+				},
+			},
+		},
+	}
 }

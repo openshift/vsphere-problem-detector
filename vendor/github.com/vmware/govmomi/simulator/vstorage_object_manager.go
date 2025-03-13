@@ -1,18 +1,6 @@
-/*
-Copyright (c) 2018 VMware, Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// © Broadcom. All Rights Reserved.
+// The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: Apache-2.0
 
 package simulator
 
@@ -36,6 +24,7 @@ import (
 type VStorageObject struct {
 	types.VStorageObject
 	types.VStorageObjectSnapshotInfo
+	Metadata []types.KeyValue
 }
 
 type VcenterVStorageObjectManager struct {
@@ -53,6 +42,10 @@ func (m *VcenterVStorageObjectManager) object(ds types.ManagedObjectReference, i
 		return objects[id]
 	}
 	return nil
+}
+
+func (m *VcenterVStorageObjectManager) Catalog() map[types.ManagedObjectReference]map[types.ID]*VStorageObject {
+	return m.objects
 }
 
 func (m *VcenterVStorageObjectManager) ListVStorageObject(req *types.ListVStorageObject) soap.HasFault {
@@ -287,6 +280,10 @@ func (m *VcenterVStorageObjectManager) DeleteVStorageObjectTask(ctx *Context, re
 			return nil, &types.InvalidArgument{}
 		}
 
+		if len(obj.Config.ConsumerId) != 0 {
+			return nil, &types.InvalidState{}
+		}
+
 		backing := obj.Config.Backing.(*types.BaseConfigInfoDiskFileBackingInfo)
 		ds := ctx.Map.Get(req.Datastore).(*Datastore)
 		dc := ctx.Map.getEntityDatacenter(ds)
@@ -466,4 +463,56 @@ func (m *VcenterVStorageObjectManager) ListTagsAttachedToVStorageObject(ctx *Con
 	}
 
 	return body
+}
+
+func (m *VcenterVStorageObjectManager) VCenterUpdateVStorageObjectMetadataExTask(ctx *Context, req *types.VCenterUpdateVStorageObjectMetadataEx_Task) soap.HasFault {
+	task := CreateTask(m, "updateVStorageObjectMetadataEx", func(*Task) (types.AnyType, types.BaseMethodFault) {
+		obj := m.object(req.Datastore, req.Id)
+		if obj == nil {
+			return nil, new(types.InvalidArgument)
+		}
+
+		var metadata []types.KeyValue
+
+		remove := func(key string) bool {
+			for _, dk := range req.DeleteKeys {
+				if key == dk {
+					return true
+				}
+			}
+			return false
+		}
+
+		for _, kv := range obj.Metadata {
+			if !remove(kv.Key) {
+				metadata = append(metadata, kv)
+			}
+		}
+
+		update := func(kv types.KeyValue) bool {
+			for i := range obj.Metadata {
+				if obj.Metadata[i].Key == kv.Key {
+					obj.Metadata[i] = kv
+					return true
+				}
+			}
+			return false
+		}
+
+		for _, kv := range req.Metadata {
+			if !update(kv) {
+				metadata = append(metadata, kv)
+			}
+		}
+
+		obj.Metadata = metadata
+
+		return nil, nil
+	})
+
+	return &methods.VCenterUpdateVStorageObjectMetadataEx_TaskBody{
+		Res: &types.VCenterUpdateVStorageObjectMetadataEx_TaskResponse{
+			Returnval: task.Run(ctx),
+		},
+	}
 }

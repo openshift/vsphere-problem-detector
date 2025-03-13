@@ -1,18 +1,6 @@
-/*
-Copyright (c) 2014-2024 VMware, Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// © Broadcom. All Rights Reserved.
+// The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: Apache-2.0
 
 package mo
 
@@ -35,9 +23,6 @@ type typeInfo struct {
 
 	// Map property names to field indices.
 	props map[string][]int
-
-	// Use base type for interface indices.
-	base bool
 }
 
 var typeInfoLock sync.RWMutex
@@ -68,20 +53,22 @@ func typeInfoForType(tname string) *typeInfo {
 
 func baseType(ftyp reflect.Type) reflect.Type {
 	base := strings.TrimPrefix(ftyp.Name(), "Base")
+	switch base {
+	case "MethodFault":
+		return nil
+	}
 	if kind, ok := types.TypeFunc()(base); ok {
 		return kind
 	}
-	return ftyp
+	return nil
 }
 
-func newTypeInfo(typ reflect.Type, base ...bool) *typeInfo {
+func newTypeInfo(typ reflect.Type) *typeInfo {
 	t := typeInfo{
 		typ:   typ,
 		props: make(map[string][]int),
 	}
-	if len(base) == 1 {
-		t.base = base[0]
-	}
+
 	t.build(typ, "", []int{})
 
 	return &t
@@ -170,13 +157,16 @@ func (t *typeInfo) build(typ reflect.Type, fn string, fi []int) {
 			t.build(ftyp, fnc, fic)
 		}
 
+		// Base type can only access base fields, for example Datastore.Info
+		// is types.BaseDataStore, so we create a new(types.DatastoreInfo)
 		// Indexed property path may traverse into array element fields.
 		// When interface, use the base type to index fields.
 		// For example, BaseVirtualDevice:
 		//   config.hardware.device[4000].deviceInfo.label
-		if t.base && ftyp.Kind() == reflect.Interface {
-			base := baseType(ftyp)
-			t.build(base, fnc, fic)
+		if ftyp.Kind() == reflect.Interface {
+			if base := baseType(ftyp); base != nil {
+				t.build(base, fnc, fic)
+			}
 		}
 	}
 }
@@ -190,8 +180,10 @@ var nilValue reflect.Value
 func assignValue(val reflect.Value, fi []int, pv reflect.Value, field ...string) {
 	// Indexed property path can only use base types
 	if val.Kind() == reflect.Interface {
-		base := baseType(val.Type())
-		val.Set(reflect.New(base))
+		if val.IsNil() {
+			base := baseType(val.Type())
+			val.Set(reflect.New(base))
+		}
 		val = val.Elem()
 	}
 
@@ -283,7 +275,7 @@ func assignValue(val reflect.Value, fi []int, pv reflect.Value, field ...string)
 					item = reflect.New(rt.Elem())
 				}
 
-				field := newTypeInfo(item.Type(), true)
+				field := newTypeInfo(item.Type())
 				if ix, ok := field.props[path]; ok {
 					assignValue(item, ix, pv)
 				}
@@ -333,6 +325,18 @@ func (t *typeInfo) LoadFromObjectContent(o types.ObjectContent) (reflect.Value, 
 func IsManagedObjectType(kind string) bool {
 	_, ok := t[kind]
 	return ok
+}
+
+// Value returns a new mo instance of the given ref Type.
+func Value(ref types.ManagedObjectReference) (Reference, bool) {
+	if rt, ok := t[ref.Type]; ok {
+		val := reflect.New(rt)
+		if e, ok := val.Interface().(Entity); ok {
+			e.Entity().Self = ref
+			return val.Elem().Interface().(Reference), true
+		}
+	}
+	return nil, false
 }
 
 // Field of a ManagedObject in string form.
