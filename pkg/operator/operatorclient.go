@@ -2,12 +2,17 @@ package operator
 
 import (
 	"context"
+	"fmt"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	acv1 "github.com/openshift/client-go/operator/applyconfigurations/operator/v1"
+
 	operatorconfigclient "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	operatorclientinformers "github.com/openshift/client-go/operator/informers/externalversions"
+	"github.com/openshift/library-go/pkg/apiserver/jsonpatch"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -41,6 +46,60 @@ func (c OperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
 		return nil, err
 	}
 	return &instance.ObjectMeta, nil
+}
+
+func (c *OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, desiredConfiguration *acv1.OperatorSpecApplyConfiguration) error {
+	if desiredConfiguration == nil {
+		return fmt.Errorf("desiredConfiguration must have a value")
+	}
+
+	desiredSpec := &acv1.StorageSpecApplyConfiguration{
+		OperatorSpecApplyConfiguration: *desiredConfiguration,
+	}
+	desired := acv1.Storage(globalConfigName)
+
+	desired.WithSpec(desiredSpec)
+
+	_, err := c.Client.Storages().Apply(ctx, desired, metav1.ApplyOptions{
+		Force:        true,
+		FieldManager: fieldManager,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to Apply spec to storage operator using fieldManager %q: %w", fieldManager, err)
+	}
+
+	return nil
+}
+
+func (c *OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, desiredStatus *acv1.OperatorStatusApplyConfiguration) error {
+	if desiredStatus == nil {
+		return fmt.Errorf("desiredStatus must have a value")
+	}
+
+	desiredApplyStatus := &acv1.StorageStatusApplyConfiguration{
+		OperatorStatusApplyConfiguration: *desiredStatus,
+	}
+	desired := acv1.Storage(globalConfigName)
+
+	desired.WithStatus(desiredApplyStatus)
+
+	_, err := c.Client.Storages().Apply(ctx, desired, metav1.ApplyOptions{
+		Force:        true,
+		FieldManager: fieldManager,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to Apply status to storage operator using fieldManager %q: %w", fieldManager, err)
+	}
+	return nil
+}
+
+func (c *OperatorClient) PatchOperatorStatus(ctx context.Context, jsonPatch *jsonpatch.PatchSet) (err error) {
+	jsonPatchBytes, err := jsonPatch.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = c.Client.Storages().Patch(ctx, globalConfigName, types.JSONPatchType, jsonPatchBytes, metav1.PatchOptions{}, "/status")
+	return err
 }
 
 func (c OperatorClient) UpdateOperatorSpec(ctx context.Context, resourceVersion string, spec *operatorv1.OperatorSpec) (*operatorv1.OperatorSpec, string, error) {

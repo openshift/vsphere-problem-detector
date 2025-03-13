@@ -6,13 +6,14 @@ import (
 	v1 "github.com/openshift/api/operator/v1"
 )
 
-// IPsecConfigApplyConfiguration represents an declarative configuration of the IPsecConfig type for use
+// IPsecConfigApplyConfiguration represents a declarative configuration of the IPsecConfig type for use
 // with apply.
 type IPsecConfigApplyConfiguration struct {
-	Mode *v1.IPsecMode `json:"mode,omitempty"`
+	Mode *v1.IPsecMode                          `json:"mode,omitempty"`
+	Full *IPsecFullModeConfigApplyConfiguration `json:"full,omitempty"`
 }
 
-// IPsecConfigApplyConfiguration constructs an declarative configuration of the IPsecConfig type for use with
+// IPsecConfigApplyConfiguration constructs a declarative configuration of the IPsecConfig type for use with
 // apply.
 func IPsecConfig() *IPsecConfigApplyConfiguration {
 	return &IPsecConfigApplyConfiguration{}
@@ -23,5 +24,13 @@ func IPsecConfig() *IPsecConfigApplyConfiguration {
 // If called multiple times, the Mode field is set to the value of the last call.
 func (b *IPsecConfigApplyConfiguration) WithMode(value v1.IPsecMode) *IPsecConfigApplyConfiguration {
 	b.Mode = &value
+	return b
+}
+
+// WithFull sets the Full field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Full field is set to the value of the last call.
+func (b *IPsecConfigApplyConfiguration) WithFull(value *IPsecFullModeConfigApplyConfiguration) *IPsecConfigApplyConfiguration {
+	b.Full = value
 	return b
 }
