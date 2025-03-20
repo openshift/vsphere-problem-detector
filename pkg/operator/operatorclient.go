@@ -97,19 +97,24 @@ func (c OperatorClient) GetOperatorStateWithQuorum(ctx context.Context) (*operat
 	return &instance.Spec.OperatorSpec, &instance.Status.OperatorStatus, instance.GetResourceVersion(), nil
 }
 
-func (c OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, applyConfiguration *applyoperatorv1.OperatorSpecApplyConfiguration) error {
-	desiredSpecApplyConf := &applyoperatorv1.StorageApplyConfiguration{
-		Spec: &applyoperatorv1.StorageSpecApplyConfiguration{OperatorSpecApplyConfiguration: *applyConfiguration},
-	}
+func (c OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, applySpecConfiguration *applyoperatorv1.OperatorSpecApplyConfiguration) error {
+	desiredSpecApplyConf := applyoperatorv1.Storage(globalConfigName).
+		WithSpec(&applyoperatorv1.StorageSpecApplyConfiguration{
+			OperatorSpecApplyConfiguration: *applySpecConfiguration})
 	_, err := c.Client.Storages().Apply(ctx, desiredSpecApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
 	return err
 }
 
-func (c OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, applyConfiguration *applyoperatorv1.OperatorStatusApplyConfiguration) error {
-	desiredStatusApplyConf := &applyoperatorv1.StorageApplyConfiguration{
-		Status: &applyoperatorv1.StorageStatusApplyConfiguration{OperatorStatusApplyConfiguration: *applyConfiguration},
+func (c OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, applyStatusConfiguration *applyoperatorv1.OperatorStatusApplyConfiguration) error {
+	for i := range applyStatusConfiguration.Conditions {
+		if applyStatusConfiguration.Conditions[i].LastTransitionTime.IsZero() {
+			lastTransitionTime := metav1.Now()
+			applyStatusConfiguration.Conditions[i].LastTransitionTime = &lastTransitionTime
+		}
 	}
-
+	desiredStatusApplyConf := applyoperatorv1.Storage(globalConfigName).
+		WithStatus(&applyoperatorv1.StorageStatusApplyConfiguration{
+			OperatorStatusApplyConfiguration: *applyStatusConfiguration})
 	_, err := c.Client.Storages().ApplyStatus(ctx, desiredStatusApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
 	return err
 }
