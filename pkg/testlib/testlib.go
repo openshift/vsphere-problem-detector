@@ -34,6 +34,7 @@ var f embed.FS
 
 const (
 	DefaultModel    = "testlib/testdata/default"
+	HostGroupModel  = "testlib/testdata/host-group"
 	defaultDC       = "DC0"
 	defaultVMPath   = "/DC0/vm/"
 	defaultHost     = "H0"
@@ -110,6 +111,7 @@ type VCenter struct {
 	VMClient   *vim25.Client
 	TagManager *vapitags.Manager
 	Username   string
+	Model      simulator.Model
 }
 
 func SetupSimulator(kubeClient *FakeKubeClient, modelDir string) (setup *TestSetup, cleanup func(), err error) {
@@ -149,11 +151,11 @@ func SetupSimulatorWithConfig(kubeClient *FakeKubeClient, modelDir, cloudConfig 
 
 		restClient := rest.NewClient(client)
 		restClient.Login(context.TODO(), s.URL.User)
-
 		vcs[vCenterName] = &VCenter{
 			VMClient:   client,
 			TagManager: vapitags.NewManager(restClient),
 			Username:   userSession.UserName,
+			Model:      model,
 		}
 
 		sessions = append(sessions, s)
@@ -274,8 +276,9 @@ func InfrastructureWithFailureDomain(modifiers ...func(*ocpv1.Infrastructure)) *
 		Region: "east",
 		Server: "dc0",
 		Topology: ocpv1.VSpherePlatformTopology{
-			Datacenter: "DC0",
-			Datastore:  "LocalDS_0",
+			ComputeCluster: "/DC0/host/DC0_C0",
+			Datacenter:     "DC0",
+			Datastore:      "LocalDS_0",
 		},
 		Zone: "east-1a",
 	})
@@ -308,10 +311,49 @@ func InfrastructureWithMultipleFailureDomain(modifiers ...func(*ocpv1.Infrastruc
 		Region: "west",
 		Server: "dc0",
 		Topology: ocpv1.VSpherePlatformTopology{
-			Datacenter: "DC1",
-			Datastore:  "LocalDS_1",
+			ComputeCluster: "/DC1/host/DC0_C1",
+			Datacenter:     "DC1",
+			Datastore:      "LocalDS_1",
 		},
 		Zone: "west-1a",
+	})
+
+	infra.Spec.PlatformSpec.VSphere.FailureDomains = fds
+
+	for _, modifier := range modifiers {
+		modifier(infra)
+	}
+	return infra
+}
+
+func InfrastructureWithMultipleFailureDomainHostGroup(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastructure {
+	infra := InfrastructureWithFailureDomain()
+
+	// Add failure domain
+	fds := infra.Spec.PlatformSpec.VSphere.FailureDomains
+	fds = append(fds, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "dc0",
+		Region: "west",
+		Server: "dc0",
+		Topology: ocpv1.VSpherePlatformTopology{
+			ComputeCluster: "/DC0/host/DC0_C1",
+			Datacenter:     "DC0",
+			Datastore:      "LocalDS_0",
+			Folder:         "/DC0/vm",
+			Networks: []string{
+				"DC0_DVPG0",
+			},
+			ResourcePool: "/DC0/host/DC0_C1/Resources/test-resourcepool",
+		},
+		Zone: "west-1a",
+		ZoneAffinity: &ocpv1.VSphereFailureDomainZoneAffinity{
+			Type: ocpv1.HostGroupFailureDomainZone,
+			HostGroup: &ocpv1.VSphereFailureDomainHostGroup{
+				VMGroup:    "vm-zone-1",
+				HostGroup:  "zone-1",
+				VMHostRule: "vm-rule-zone-1",
+			},
+		},
 	})
 
 	infra.Spec.PlatformSpec.VSphere.FailureDomains = fds

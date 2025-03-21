@@ -5,6 +5,7 @@ import (
 
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/simulator"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -27,6 +28,7 @@ var (
 		"CountVolumeTypes":        CountPVTypes,
 		"CheckAccountPermissions": CheckAccountPermissions,
 		"CheckZoneTags":           CheckZoneTags,
+		"CheckHostGroups":         CheckHostGroups,
 		"CheckInfraConfig":        CheckInfraConfig,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
@@ -64,19 +66,21 @@ type CheckContext struct {
 	VCenters         map[string]*VCenter
 	KubeClient       KubeClient
 	ClusterInfo      *util.ClusterInfo
-	//Infra            *ocpv1.Infrastructure
-	PlatformSpec *ocpv1.VSpherePlatformSpec
+	PlatformSpec     *ocpv1.VSpherePlatformSpec
 }
 
 // VCenter contains all specific vCenter information needed for performing checks
 type VCenter struct {
-	AuthManager   AuthManager
-	Cache         cache.VSphereCache
-	GovmomiClient *govmomi.Client
-	TagManager    *vapitags.Manager
-	Username      string
-	VCenterName   string
-	VMClient      *vim25.Client
+	AuthManager         AuthManager
+	Cache               cache.VSphereCache
+	GovmomiClient       *govmomi.Client
+	TagManager          *vapitags.Manager
+	Username            string
+	VCenterName         string
+	VMClient            *vim25.Client
+	RegionTagCategoryID string
+	ZoneTagCategoryID   string
+	Model               simulator.Model
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.

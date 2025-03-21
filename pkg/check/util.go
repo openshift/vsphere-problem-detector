@@ -131,9 +131,16 @@ func getClusterComputeResource(ctx *CheckContext, vCenter *VCenter, computeClust
 	finder.SetDatacenter(datacenter)
 	computeClusterMo, err := finder.ClusterComputeResource(tctx, computeCluster)
 	if err != nil {
-		log.Logf("Unable to get cluster ComputeResource: %s", err)
+		clusters, err := finder.ComputeResourceList(ctx.Context, datacenter.InventoryPath)
+		if err == nil {
+			for _, cluster := range clusters {
+				fmt.Printf("cluster: %s\n", cluster.InventoryPath)
+			}
+		}
+		return nil, fmt.Errorf("unable to get cluster ComputeResource: %s", err)
 	}
-	return computeClusterMo, err
+
+	return computeClusterMo, nil
 }
 
 // getCategories returns all tag categories.
@@ -150,10 +157,33 @@ func getCategories(ctx *CheckContext, vCenter *VCenter) ([]vapitags.Category, er
 	return tags, nil
 }
 
+func getHostsInHostGroup(ctx context.Context, computeCluster *object.ClusterComputeResource, failureDomain *ocpv1.VSpherePlatformFailureDomainSpec) ([]vim.ManagedObjectReference, error) {
+	if failureDomain.ZoneAffinity == nil {
+		return nil, nil
+	}
+	clusterConfigInfo, err := computeCluster.Configuration(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get cluster configuration. %v", err)
+	}
+
+	for _, group := range clusterConfigInfo.Group {
+		if _, isType := group.(*vim.ClusterHostGroup); isType {
+			hostGroup := group.(*vim.ClusterHostGroup)
+			if hostGroup.Name != failureDomain.ZoneAffinity.HostGroup.HostGroup {
+				continue
+			}
+			return hostGroup.Host, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // getAncestors returns a list of ancestor objects related to the passed in ManagedObjectReference.
 func getAncestors(ctx *CheckContext, vctx validationContext) ([]mo.ManagedEntity, error) {
 	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	reference := vctx.reference
+
 	defer cancel()
 
 	ancestors, err := mo.Ancestors(tctx,
@@ -163,6 +193,25 @@ func getAncestors(ctx *CheckContext, vctx validationContext) ([]mo.ManagedEntity
 	if err != nil {
 		return nil, err
 	}
+
+	zoneAffinity := vctx.failureDomain.ZoneAffinity
+	if zoneAffinity != nil && zoneAffinity.Type == ocpv1.HostGroupFailureDomainZone {
+		computeCluster := vctx.computeCluster
+		hosts, err := getHostsInHostGroup(ctx.Context, computeCluster, vctx.failureDomain)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get hosts in host group: %v", err)
+		}
+
+		for _, host := range hosts {
+			managedEntity := mo.ManagedEntity{
+				ExtensibleManagedObject: mo.ExtensibleManagedObject{
+					Self: host,
+				},
+			}
+			ancestors = append(ancestors, managedEntity)
+		}
+	}
+
 	return ancestors, err
 }
 
@@ -172,6 +221,7 @@ func getAttachedTagsOnObjects(ctx *CheckContext, vctx *validationContext, refere
 
 	tagManager := vctx.vCenter.TagManager
 	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
+
 	return attachedTags, err
 }
 
