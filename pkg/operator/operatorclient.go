@@ -2,16 +2,22 @@ package operator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	applyoperatorv1 "github.com/openshift/client-go/operator/applyconfigurations/operator/v1"
 	operatorconfigclient "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	operatorclientinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/apiserver/jsonpatch"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 )
 
 type OperatorClient struct {
@@ -97,26 +103,83 @@ func (c OperatorClient) GetOperatorStateWithQuorum(ctx context.Context) (*operat
 	return &instance.Spec.OperatorSpec, &instance.Status.OperatorStatus, instance.GetResourceVersion(), nil
 }
 
-func (c OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, applySpecConfiguration *applyoperatorv1.OperatorSpecApplyConfiguration) error {
+func (c OperatorClient) ApplyOperatorSpec(ctx context.Context, fieldManager string, desiredSpecConfiguration *applyoperatorv1.OperatorSpecApplyConfiguration) error {
+	if desiredSpecConfiguration == nil {
+		return errors.New("desiredSpecConfiguration must have a value")
+	}
 	desiredSpecApplyConf := applyoperatorv1.Storage(globalConfigName).
 		WithSpec(&applyoperatorv1.StorageSpecApplyConfiguration{
-			OperatorSpecApplyConfiguration: *applySpecConfiguration})
-	_, err := c.Client.Storages().Apply(ctx, desiredSpecApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
-	return err
-}
+			OperatorSpecApplyConfiguration: *desiredSpecConfiguration})
 
-func (c OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, applyStatusConfiguration *applyoperatorv1.OperatorStatusApplyConfiguration) error {
-	for i := range applyStatusConfiguration.Conditions {
-		if applyStatusConfiguration.Conditions[i].LastTransitionTime.IsZero() {
-			lastTransitionTime := metav1.Now()
-			applyStatusConfiguration.Conditions[i].LastTransitionTime = &lastTransitionTime
+	instance, err := c.GetOperatorInstance()
+	switch {
+	case apierrors.IsNotFound(err):
+		// Object does not exist yet, proceed with apply to create it
+	case err != nil:
+		return fmt.Errorf("unable to get operator configuration: %w", err)
+	default:
+		original, err := applyoperatorv1.ExtractStorage(instance, fieldManager)
+		if err != nil {
+			return fmt.Errorf("unable to extract operator configuration: %w", err)
+		}
+		if original.Status != nil && equality.Semantic.DeepEqual(original, desiredSpecApplyConf) {
+			return nil
 		}
 	}
+
+	_, err = c.Client.Storages().Apply(ctx, desiredSpecApplyConf, metav1.ApplyOptions{
+		Force:        true,
+		FieldManager: fieldManager,
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to ApplySpec for operator using fieldManager %q: %w", fieldManager, err)
+	}
+
+	return nil
+}
+
+func (c OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager string, desiredStatusConfiguration *applyoperatorv1.OperatorStatusApplyConfiguration) error {
+	if desiredStatusConfiguration == nil {
+		return errors.New("desiredStatusConfiguration must have a value")
+	}
+
 	desiredStatusApplyConf := applyoperatorv1.Storage(globalConfigName).
 		WithStatus(&applyoperatorv1.StorageStatusApplyConfiguration{
-			OperatorStatusApplyConfiguration: *applyStatusConfiguration})
-	_, err := c.Client.Storages().ApplyStatus(ctx, desiredStatusApplyConf, metav1.ApplyOptions{FieldManager: fieldManager})
-	return err
+			OperatorStatusApplyConfiguration: *desiredStatusConfiguration})
+
+	instance, err := c.GetOperatorInstance()
+	switch {
+	case apierrors.IsNotFound(err):
+		// Object does not exist yet, proceed with apply to create it
+		v1helpers.SetApplyConditionsLastTransitionTime(clock.RealClock{}, &desiredStatusApplyConf.Status.Conditions, nil)
+	case err != nil:
+		return fmt.Errorf("unable to get operator configuration: %w", err)
+	default:
+		original, err := applyoperatorv1.ExtractStorageStatus(instance, fieldManager)
+		if err != nil {
+			return fmt.Errorf("unable to extract operator configuration from status: %w", err)
+		}
+		if original.Status != nil && equality.Semantic.DeepEqual(original, desiredStatusApplyConf) {
+			return nil
+		}
+		if original.Status != nil {
+			v1helpers.SetApplyConditionsLastTransitionTime(clock.RealClock{}, &desiredStatusApplyConf.Status.Conditions, original.Status.Conditions)
+		} else {
+			v1helpers.SetApplyConditionsLastTransitionTime(clock.RealClock{}, &desiredStatusApplyConf.Status.Conditions, nil)
+		}
+	}
+
+	_, err = c.Client.Storages().ApplyStatus(ctx, desiredStatusApplyConf, metav1.ApplyOptions{
+		Force:        true,
+		FieldManager: fieldManager,
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to ApplyStatus for operator using fieldManager %q: %w", fieldManager, err)
+	}
+
+	return nil
 }
 
 func (c OperatorClient) PatchOperatorStatus(ctx context.Context, jsonPatch *jsonpatch.PatchSet) error {
