@@ -33,7 +33,7 @@ import (
 )
 
 type vSphereProblemDetectorController struct {
-	operatorClient         *OperatorClient
+	operatorClient         v1helpers.OperatorClient
 	kubeClient             kubernetes.Interface
 	infraLister            infralister.InfrastructureLister
 	secretLister           corelister.SecretLister
@@ -98,7 +98,7 @@ var (
 )
 
 func NewVSphereProblemDetectorController(
-	operatorClient *OperatorClient,
+	operatorClient v1helpers.OperatorClientWithFinalizers,
 	kubeClient kubernetes.Interface,
 	namespacedInformer v1helpers.KubeInformersForNamespaces,
 	configInformer infrainformer.InfrastructureInformer,
