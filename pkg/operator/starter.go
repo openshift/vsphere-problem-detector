@@ -37,9 +37,9 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	}
 	csiConfigInformers := informer.NewSharedInformerFactoryWithOptions(csiConfigClient, resync)
 
-	operatorClient := &OperatorClient{
-		csiConfigInformers,
-		csiConfigClient.OperatorV1(),
+	operatorClient, operatorDynamicInformer, err := NewOperatorClient(controllerConfig.KubeConfig)
+	if err != nil {
+		return err
 	}
 
 	configClient, err := configclient.NewForConfig(controllerConfig.KubeConfig)
@@ -70,6 +70,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		kubeInformers,
 		configInformers,
 		operatorInformer,
+		operatorDynamicInformer,
 	} {
 		informer.Start(ctx.Done())
 	}
