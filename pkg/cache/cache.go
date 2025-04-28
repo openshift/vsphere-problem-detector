@@ -265,7 +265,6 @@ func (c *vSphereCache) GetDatastoreMoByReference(ctx context.Context, dcName str
 		}
 	}
 	err = fmt.Errorf("couldn't find Datastore with reference %+v in datacenter %s", ref, dcName)
-	klog.Error(err)
 	return mo.Datastore{}, err
 }
 

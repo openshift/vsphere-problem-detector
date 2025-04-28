@@ -17,7 +17,6 @@ import (
 	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/vsphere-problem-detector/pkg/log"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
@@ -326,7 +325,7 @@ func getPolicy(ctx *CheckContext, vCenter *VCenter, name string) ([]types.BasePb
 }
 
 func checkDataStore(ctx *CheckContext, vCenter *VCenter, dsName string, dcName string, dsTypes dataStoreTypeCollector) error {
-	klog.V(2).Infof("checking datastore %s for permissions", dsName)
+	klog.V(2).Infof("checking datastore %s", dsName)
 	var errs []error
 	dsMo, err := getDataStoreMoByName(ctx, vCenter, dsName, dcName)
 	if err != nil {
@@ -343,7 +342,7 @@ func checkDataStore(ctx *CheckContext, vCenter *VCenter, dsName string, dcName s
 }
 
 func checkDataStoreWithURL(ctx *CheckContext, dsURL string, dsTypes dataStoreTypeCollector) error {
-	klog.V(2).Infof("checking datastore %s for permissions", dsURL)
+	klog.V(2).Infof("checking datastore %s", dsURL)
 	var errs []error
 
 	dsMo, dcName, vCenter, err := getDatastoreByURL(ctx, dsURL)
@@ -376,7 +375,7 @@ func checkForDatastoreCluster(ctx *CheckContext, vCenter *VCenter, dsMo mo.Datas
 			if err != nil {
 				// we may not have permissions to fetch unrelated datastores in OCP
 				// and hence we are going to ignore the error.
-				log.Logf("fetching datastore %s failed: %v", child.String(), err)
+				klog.V(4).Infof("fetching datastore %s failed: %v (this is expected if datastore is not related to OCP)", child.String(), err)
 				continue
 			}
 			if tDS.Summary.Url == dsMo.Summary.Url {
