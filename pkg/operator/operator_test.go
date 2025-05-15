@@ -14,6 +14,7 @@ import (
 	opinformers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -337,7 +338,9 @@ func TestSync(t *testing.T) {
 					},
 				},
 				Status: opv1.StorageStatus{
-					OperatorStatus: opv1.OperatorStatus{},
+					OperatorStatus: opv1.OperatorStatus{
+						Conditions: []opv1.OperatorCondition{},
+					},
 				},
 			}
 
@@ -345,10 +348,11 @@ func TestSync(t *testing.T) {
 			opInformerFactory := opinformers.NewSharedInformerFactory(opClient, 0)
 			opInformerFactory.Operator().V1().Storages().Informer().GetIndexer().Add(storageInstance)
 
-			operatorClient := &OperatorClient{
-				Informers: opInformerFactory,
-				Client:    opClient.OperatorV1(),
-			}
+			operatorClient := v1helpers.NewFakeOperatorClient(
+				&storageInstance.Spec.OperatorSpec,
+				&storageInstance.Status.OperatorStatus,
+				nil,
+			)
 
 			c := opv1.ClusterCSIDriver{
 				ObjectMeta: metav1.ObjectMeta{
@@ -382,14 +386,16 @@ func TestSync(t *testing.T) {
 				t.Errorf("sync returned unexpected error: %s", err)
 			}
 
-			storage, err := opClient.OperatorV1().Storages().Get(context.TODO(), "cluster", metav1.GetOptions{})
+			_, status, _, err := operatorClient.GetOperatorState()
 			if err != nil {
-				t.Fatalf("Error getting operator status: %s", err)
+				t.Fatalf("Error getting operator status from client: %s", err)
 			}
-			if len(storage.Status.Conditions) != 1 {
-				t.Fatalf("Expected 1 condition in status, got none: %+v", storage.Status)
+
+			if len(status.Conditions) != 1 {
+				t.Fatalf("Expected 1 condition in status, got %d: %+v", len(status.Conditions), status)
 			}
-			cnd := storage.Status.Conditions[0]
+
+			cnd := status.Conditions[0]
 			if cnd.Status != tc.expectedAvailableConditionStatus {
 				t.Errorf("Expected Available condition %q, got %q", tc.expectedAvailableConditionStatus, cnd.Status)
 			}
