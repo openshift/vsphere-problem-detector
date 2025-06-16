@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
@@ -12,6 +15,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+	"k8s.io/legacy-cloud-providers/vsphere"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
@@ -226,4 +230,68 @@ func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Referenc
 	tagManager := ctx.TagManager
 	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
 	return attachedTags, err
+}
+
+func ConvertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckContext) {
+	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
+
+	if infra.Spec.PlatformSpec.VSphere != nil {
+		infra.Spec.PlatformSpec.VSphere.DeepCopyInto(checkContext.PlatformSpec)
+	}
+
+	if checkContext.VMConfig != nil {
+		config := checkContext.VMConfig
+		if checkContext.PlatformSpec != nil {
+			if len(checkContext.PlatformSpec.VCenters) != 0 {
+				// we need to check if we really need to add to VCenters and FailureDomains
+				vcenter := vCentersToMap(checkContext.PlatformSpec.VCenters)
+
+				// vcenter is missing from the map, add it...
+				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
+					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+
+				if len(checkContext.PlatformSpec.FailureDomains) == 0 {
+					addFailureDomainsToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+			} else {
+				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+			}
+		}
+	}
+}
+
+func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	if ccmVcenter, ok := config.VirtualCenter[config.Workspace.VCenterIP]; ok {
+		datacenters := strings.Split(ccmVcenter.Datacenters, ",")
+
+		platformSpec.VCenters = append(platformSpec.VCenters, ocpv1.VSpherePlatformVCenterSpec{
+			Server:      config.Workspace.VCenterIP,
+			Datacenters: datacenters,
+		})
+		addFailureDomainsToPlatformSpec(config, platformSpec)
+	}
+}
+
+func addFailureDomainsToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "",
+		Region: "",
+		Zone:   "",
+		Server: config.Workspace.VCenterIP,
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter:   config.Workspace.Datacenter,
+			Folder:       config.Workspace.Folder,
+			ResourcePool: config.Workspace.ResourcePoolPath,
+			Datastore:    config.Workspace.DefaultDatastore,
+		},
+	})
+}
+
+func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
+	vcenterMap := make(map[string]ocpv1.VSpherePlatformVCenterSpec, len(vcenters))
+	for _, v := range vcenters {
+		vcenterMap[v.Server] = v
+	}
+	return vcenterMap
 }

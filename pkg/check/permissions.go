@@ -199,37 +199,40 @@ func getFolderReference(ctx context.Context, path string, finder *find.Finder) (
 // installation. each group of privileges will be checked for missing privileges.
 func CheckAccountPermissions(ctx *CheckContext) error {
 	var errs []error
-	matchinDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return err
-	}
 
-	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, matchinDC)
-	if err != nil {
-		errs = append(errs, err)
-	}
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		matchinDC, err := getDatacenter(ctx, fd.Topology.Datacenter)
+		if err != nil {
+			return err
+		}
 
-	if ds != nil {
-		err = checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
+		ds, err := getDataStoreByName(ctx, fd.Topology.Datastore, matchinDC)
 		if err != nil {
 			errs = append(errs, err)
 		}
-	}
 
-	err = checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		errs = append(errs, err)
-	}
+		if ds != nil {
+			err = checkDatastorePrivileges(ctx, fd.Topology.Datastore, ds.Reference())
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
 
-	err = checkFolderPrivileges(ctx, "/", permissionVcenter)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	if ctx.VMConfig.Workspace.Folder != "" {
-		err = checkFolderPrivileges(ctx, ctx.VMConfig.Workspace.Folder, permissionFolder)
+		err = checkDatacenterPrivileges(ctx, fd.Topology.Datacenter)
 		if err != nil {
 			errs = append(errs, err)
+		}
+
+		err = checkFolderPrivileges(ctx, "/", permissionVcenter)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		if fd.Topology.Folder != "" {
+			err = checkFolderPrivileges(ctx, fd.Topology.Folder, permissionFolder)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 

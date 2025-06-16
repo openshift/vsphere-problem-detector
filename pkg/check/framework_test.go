@@ -120,6 +120,11 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 		s.Close()
 		model.Remove()
 	}
+
+	if kubeClient != nil && kubeClient.infrastructure != nil {
+		ConvertToPlatformSpec(kubeClient.infrastructure, ctx)
+	}
+
 	return ctx, cleanup, nil
 }
 
@@ -182,6 +187,11 @@ func infrastructure(modifiers ...func(*ocpv1.Infrastructure)) *ocpv1.Infrastruct
 	infra := &ocpv1.Infrastructure{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "cluster",
+		},
+		Spec: ocpv1.InfrastructureSpec{
+			PlatformSpec: ocpv1.PlatformSpec{
+				VSphere: &ocpv1.VSpherePlatformSpec{},
+			},
 		},
 		Status: ocpv1.InfrastructureStatus{
 			InfrastructureName: "my-cluster-id",
