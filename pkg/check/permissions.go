@@ -147,13 +147,9 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 }
 
 func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	matchingDC, err := getDatacenter(ctx, dataCenterName)
 	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
+		klog.Errorf("error getting datacenter %s: %v", dataCenterName, err)
 		return err
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
@@ -163,10 +159,6 @@ func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
 }
 
 func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissionGroup) error {
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	finder := find.NewFinder(ctx.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
 	if err != nil {
@@ -199,37 +191,40 @@ func getFolderReference(ctx context.Context, path string, finder *find.Finder) (
 // installation. each group of privileges will be checked for missing privileges.
 func CheckAccountPermissions(ctx *CheckContext) error {
 	var errs []error
-	matchinDC, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		return err
-	}
 
-	ds, err := getDataStoreByName(ctx, ctx.VMConfig.Workspace.DefaultDatastore, matchinDC)
-	if err != nil {
-		errs = append(errs, err)
-	}
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		matchinDC, err := getDatacenter(ctx, fd.Topology.Datacenter)
+		if err != nil {
+			return err
+		}
 
-	if ds != nil {
-		err = checkDatastorePrivileges(ctx, ctx.VMConfig.Workspace.DefaultDatastore, ds.Reference())
+		ds, err := getDataStoreByName(ctx, fd.Topology.Datastore, matchinDC)
 		if err != nil {
 			errs = append(errs, err)
 		}
-	}
 
-	err = checkDatacenterPrivileges(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		errs = append(errs, err)
-	}
+		if ds != nil {
+			err = checkDatastorePrivileges(ctx, fd.Topology.Datastore, ds.Reference())
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
 
-	err = checkFolderPrivileges(ctx, "/", permissionVcenter)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	if ctx.VMConfig.Workspace.Folder != "" {
-		err = checkFolderPrivileges(ctx, ctx.VMConfig.Workspace.Folder, permissionFolder)
+		err = checkDatacenterPrivileges(ctx, fd.Topology.Datacenter)
 		if err != nil {
 			errs = append(errs, err)
+		}
+
+		err = checkFolderPrivileges(ctx, "/", permissionVcenter)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		if fd.Topology.Folder != "" {
+			err = checkFolderPrivileges(ctx, fd.Topology.Folder, permissionFolder)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 

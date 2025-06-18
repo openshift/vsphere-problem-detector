@@ -4,119 +4,55 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	ocpv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
-	"github.com/vmware/govmomi/vim25/types"
 	vim "github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+	"k8s.io/legacy-cloud-providers/vsphere"
 )
 
 func getDatacenter(ctx *CheckContext, dcName string) (*object.Datacenter, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	dc, err := finder.Datacenter(tctx, dcName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access datacenter %s: %s", dcName, err)
-	}
-	return dc, nil
+	return ctx.Cache.GetDatacenter(ctx.Context, dcName)
 }
 
 func getDataStoreByName(ctx *CheckContext, dsName string, dc *object.Datacenter) (*object.Datastore, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(dc)
-	ds, err := finder.Datastore(tctx, dsName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access datastore %s: %s", dsName, err)
-	}
-	return ds, nil
+	return ctx.Cache.GetDatastore(ctx.Context, dc.Name(), dsName)
 }
 
-func getDatastoreByURL(ctx *CheckContext, dsURL string) (mo.Datastore, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	var dsMo mo.Datastore
-
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return dsMo, errors.New("vcenter instance not found in the virtual center map")
-	}
-
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return dsMo, err
-	}
-
-	finder := find.NewFinder(ctx.VMClient, false)
-	finder.SetDatacenter(dc)
-	datastores, err := finder.DatastoreList(tctx, "*")
-	if err != nil {
-		klog.Errorf("failed to get all the datastores. err: %+v", err)
-		return dsMo, err
-	}
-
-	var dsList []types.ManagedObjectReference
-	for _, ds := range datastores {
-		dsList = append(dsList, ds.Reference())
-	}
-
-	var dsMoList []mo.Datastore
-	pc := property.DefaultCollector(dc.Client())
-	properties := []string{DatastoreInfoProperty, "customValue"}
-	err = pc.Retrieve(tctx, dsList, properties, &dsMoList)
-	if err != nil {
-		klog.Errorf("failed to get Datastore managed objects from datastore objects."+
-			" dsObjList: %+v, properties: %+v, err: %v", dsList, properties, err)
-		return dsMo, err
-	}
-
-	for _, ldsmo := range dsMoList {
-		if ldsmo.Info.GetDatastoreInfo().Url == dsURL {
-			klog.V(4).Infof("Found datastore MoRef %v for datastoreURL: %q in datacenter: %q",
-				ldsmo.Reference(), dsURL, dc.InventoryPath)
-			return ldsmo, nil
+func getDatastoreByURL(ctx *CheckContext, dsURL string) (dsMo mo.Datastore, dcName string, err error) {
+	for _, fd := range ctx.PlatformSpec.FailureDomains {
+		dsMo, err = ctx.Cache.GetDatastoreByURL(ctx.Context, fd.Topology.Datacenter, dsURL)
+		if err != nil {
+			if err == cache.ErrDatastoreNotFound {
+				continue
+			}
+			klog.Errorf("error fetching datastoreURL %s from datacenter %s", dsURL, fd.Topology.Datacenter)
+			return
+		}
+		if dsMo.Info.GetDatastoreInfo().Url == dsURL {
+			dcName = fd.Topology.Datacenter
+			return
 		}
 	}
-	err = fmt.Errorf("couldn't find Datastore given URL %q", dsURL)
-	klog.Error(err)
-	return dsMo, err
+
+	err = fmt.Errorf("unable to find datastore with URL %s", dsURL)
+	return
 }
 
-func getDataStoreMoByName(ctx *CheckContext, datastoreName string) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return dsMo, errors.New("vcenter instance not found in the virtual center map")
-	}
-
-	dc, err := getDatacenter(ctx, ctx.VMConfig.Workspace.Datacenter)
-	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
-		return dsMo, err
-	}
-	ds, err := getDataStoreByName(ctx, datastoreName, dc)
-	if err != nil {
-		klog.Errorf("error getting datastore %s: %v", datastoreName, err)
-		return dsMo, err
-	}
-	return getDatastore(ctx, ds.Reference())
+func getDataStoreMoByName(ctx *CheckContext, datastoreName, dcName string) (mo.Datastore, error) {
+	return ctx.Cache.GetDatastoreMo(ctx.Context, dcName, datastoreName)
 }
 
-func getDatastore(ctx *CheckContext, ref vim.ManagedObjectReference) (mo.Datastore, error) {
-	var dsMo mo.Datastore
-	pc := property.DefaultCollector(ctx.VMClient)
-	properties := []string{DatastoreInfoProperty, SummaryProperty}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
-	defer cancel()
-	err := pc.RetrieveOne(tctx, ref, properties, &dsMo)
-	if err != nil {
-		return dsMo, fmt.Errorf("failed to get datastore object from managed reference: %v", err)
-	}
-	return dsMo, nil
+func getDatastore(ctx *CheckContext, dcName string, ref vim.ManagedObjectReference) (mo.Datastore, error) {
+	return ctx.Cache.GetDatastoreMoByReference(ctx.Context, dcName, ref)
 }
 
 func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.ClusterComputeResource, error) {
@@ -124,7 +60,7 @@ func getComputeCluster(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.C
 	var computeClusterMo mo.ClusterComputeResource
 	pc := property.DefaultCollector(ctx.VMClient)
 	properties := []string{"summary", "parent"}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	err := pc.RetrieveOne(tctx, ref, properties, &hostSystemMo)
@@ -150,7 +86,7 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 	var resourcePoolMo mo.ResourcePool
 	pc := property.DefaultCollector(ctx.VMClient)
 	properties := []string{"resourcePool"}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	err := pc.RetrieveOne(tctx, ref, properties, &vmMo)
@@ -178,7 +114,7 @@ func getResourcePool(ctx *CheckContext, ref vim.ManagedObjectReference) (*mo.Res
 // getClusterComputeResource returns the ComputeResource that matches the provided name.
 func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacenter *object.Datacenter) (*object.ClusterComputeResource, error) {
 	klog.V(4).Infof("Looking for CC: %s", computeCluster)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	finder := find.NewFinder(ctx.VMClient)
@@ -192,7 +128,7 @@ func getClusterComputeResource(ctx *CheckContext, computeCluster string, datacen
 
 // getCategories returns all tag categories.
 func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	tagManager := ctx.TagManager
@@ -206,7 +142,7 @@ func getCategories(ctx *CheckContext) ([]vapitags.Category, error) {
 
 // getAncestors returns a list of ancestor objects related to the passed in ManagedObjectReference.
 func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo.ManagedEntity, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	ancestors, err := mo.Ancestors(tctx,
@@ -220,10 +156,74 @@ func getAncestors(ctx *CheckContext, reference vim.ManagedObjectReference) ([]mo
 }
 
 func getAttachedTagsOnObjects(ctx *CheckContext, referencesToCheck []mo.Reference) ([]vapitags.AttachedTags, error) {
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	tagManager := ctx.TagManager
 	attachedTags, err := tagManager.GetAttachedTagsOnObjects(tctx, referencesToCheck)
 	return attachedTags, err
+}
+
+func ConvertToPlatformSpec(infra *ocpv1.Infrastructure, checkContext *CheckContext) {
+	checkContext.PlatformSpec = &ocpv1.VSpherePlatformSpec{}
+
+	if infra.Spec.PlatformSpec.VSphere != nil {
+		infra.Spec.PlatformSpec.VSphere.DeepCopyInto(checkContext.PlatformSpec)
+	}
+
+	if checkContext.VMConfig != nil {
+		config := checkContext.VMConfig
+		if checkContext.PlatformSpec != nil {
+			if len(checkContext.PlatformSpec.VCenters) != 0 {
+				// we need to check if we really need to add to VCenters and FailureDomains
+				vcenter := vCentersToMap(checkContext.PlatformSpec.VCenters)
+
+				// vcenter is missing from the map, add it...
+				if _, ok := vcenter[config.Workspace.VCenterIP]; !ok {
+					convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+
+				if len(checkContext.PlatformSpec.FailureDomains) == 0 {
+					addFailureDomainsToPlatformSpec(config, checkContext.PlatformSpec)
+				}
+			} else {
+				convertIntreeToPlatformSpec(config, checkContext.PlatformSpec)
+			}
+		}
+	}
+}
+
+func convertIntreeToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	if ccmVcenter, ok := config.VirtualCenter[config.Workspace.VCenterIP]; ok {
+		datacenters := strings.Split(ccmVcenter.Datacenters, ",")
+
+		platformSpec.VCenters = append(platformSpec.VCenters, ocpv1.VSpherePlatformVCenterSpec{
+			Server:      config.Workspace.VCenterIP,
+			Datacenters: datacenters,
+		})
+		addFailureDomainsToPlatformSpec(config, platformSpec)
+	}
+}
+
+func addFailureDomainsToPlatformSpec(config *vsphere.VSphereConfig, platformSpec *ocpv1.VSpherePlatformSpec) {
+	platformSpec.FailureDomains = append(platformSpec.FailureDomains, ocpv1.VSpherePlatformFailureDomainSpec{
+		Name:   "",
+		Region: "",
+		Zone:   "",
+		Server: config.Workspace.VCenterIP,
+		Topology: ocpv1.VSpherePlatformTopology{
+			Datacenter:   config.Workspace.Datacenter,
+			Folder:       config.Workspace.Folder,
+			ResourcePool: config.Workspace.ResourcePoolPath,
+			Datastore:    config.Workspace.DefaultDatastore,
+		},
+	})
+}
+
+func vCentersToMap(vcenters []ocpv1.VSpherePlatformVCenterSpec) map[string]ocpv1.VSpherePlatformVCenterSpec {
+	vcenterMap := make(map[string]ocpv1.VSpherePlatformVCenterSpec, len(vcenters))
+	for _, v := range vcenters {
+		vcenterMap[v.Server] = v
+	}
+	return vcenterMap
 }

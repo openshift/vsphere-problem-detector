@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/vmware/govmomi/vapi/rest"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"net/url"
@@ -40,36 +41,37 @@ func newVSphereChecker(c *vSphereProblemDetectorController) vSphereCheckerInterf
 
 func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.ClusterInfo) (*ResultCollector, error) {
 	resultCollector := NewResultsCollector()
-	vmConfig, vmClient, restClient, err := v.connect(ctx)
+
+	checkContext, err := v.connect(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
 	defer func() {
-		if err := vmClient.Logout(ctx); err != nil {
+		if err := checkContext.GovmomiClient.Logout(ctx); err != nil {
 			klog.Errorf("Failed to logout: %v", err)
 		}
 	}()
 
 	// Get the fully-qualified vsphere username
-	sessionMgr := session.NewManager(vmClient.Client)
+	sessionMgr := session.NewManager(checkContext.VMClient)
 	user, err := sessionMgr.UserSession(ctx)
 	if err != nil {
 		return resultCollector, err
 	}
 
-	authManager := object.NewAuthorizationManager(vmClient.Client)
-
-	checkContext := &check.CheckContext{
-		Context:     ctx,
-		AuthManager: authManager,
-		VMConfig:    vmConfig,
-		VMClient:    vmClient.Client,
-		TagManager:  vapitags.NewManager(restClient),
-		Username:    user.UserName,
-		KubeClient:  v.controller,
-		ClusterInfo: clusterInfo,
+	authManager := object.NewAuthorizationManager(checkContext.VMClient)
+	infra, err := v.controller.GetInfrastructure(ctx)
+	if err != nil {
+		return nil, err
 	}
+	checkContext.Context = ctx
+	checkContext.AuthManager = authManager
+	checkContext.Username = user.UserName
+	checkContext.KubeClient = v.controller
+	checkContext.ClusterInfo = clusterInfo
+
+	check.ConvertToPlatformSpec(infra, checkContext)
 
 	checkRunner := NewCheckThreadPool(parallelVSPhereCalls, channelBufferSize)
 
@@ -86,39 +88,44 @@ func (v *vSphereChecker) runChecks(ctx context.Context, clusterInfo *util.Cluste
 	return resultCollector, nil
 }
 
-func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *govmomi.Client, *rest.Client, error) {
+func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, error) {
+	// use api infra as the basis of
+	// variables instead of intree
+	// external won't have these values...
+
 	cfgString, err := c.getVSphereConfig(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
+	// intree configuration
 	cfg, err := parseConfig(cfgString)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse config: %s", err)
+		return nil, fmt.Errorf("failed to parse config: %s", err)
 	}
 
 	username, password, err := c.getCredentials(cfg)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	vmClient, restClient, err := newClient(ctx, cfg, username, password)
 	if err != nil {
 		if strings.Index(username, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: username in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("UsernameWithNewLine").Set(0)
 		}
 
 		if strings.Index(password, "\n") != -1 {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(1)
-			return nil, nil, nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
+			return nil, fmt.Errorf("failed to connect to %s: password in credentials contains new line", cfg.Workspace.VCenterIP)
 		} else {
 			syncErrrorMetric.WithLabelValues("PasswordWithNewLine").Set(0)
 		}
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(1)
-		return nil, nil, nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
+		return nil, fmt.Errorf("failed to connect to %s: %s", cfg.Workspace.VCenterIP, err)
 	} else {
 		syncErrrorMetric.WithLabelValues("InvalidCredentials").Set(0)
 	}
@@ -126,8 +133,21 @@ func (c *vSphereChecker) connect(ctx context.Context) (*vsphere.VSphereConfig, *
 		cfg.VirtualCenter[cfg.Workspace.VCenterIP].User = username
 	}
 
+	if strings.Index(username, "@") < 0 {
+		klog.Warningf("vCenter username for %s is without domain, please consider using username with full domain name", cfg.Workspace.VCenterIP)
+	}
+
 	klog.V(2).Infof("Connected to %s as %s", cfg.Workspace.VCenterIP, username)
-	return cfg, vmClient, restClient, nil
+	checkContext := &check.CheckContext{
+		Context:       ctx,
+		VMConfig:      cfg,
+		VMClient:      vmClient.Client,
+		GovmomiClient: vmClient,
+		TagManager:    vapitags.NewManager(restClient),
+		// Each check run gets its own cache
+		Cache: cache.NewCheckCache(vmClient.Client),
+	}
+	return checkContext, nil
 }
 
 func (c *vSphereChecker) getCredentials(cfg *vsphere.VSphereConfig) (string, string, error) {
@@ -272,7 +292,7 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 }
 
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
-	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel := context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 
 	// Find datastore
@@ -285,7 +305,7 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 	// Find VM reference in the datastore, by UUID
 	s := object.NewSearchIndex(dc.Client())
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
 	if err != nil {
@@ -297,7 +317,7 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 
 	// Find VM properties
 	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 	var o mo.VirtualMachine
 	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
@@ -326,7 +346,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 
 	insecure := cfg.Global.InsecureFlag
 
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
 

@@ -2,23 +2,20 @@ package check
 
 import (
 	"context"
-	"flag"
-	vapitags "github.com/vmware/govmomi/vapi/tags"
-	"time"
-
 	ocpv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
+	"github.com/vmware/govmomi"
+	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/legacy-cloud-providers/vsphere"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 var (
-	// Make the vSphere call timeout configurable.
-	Timeout = flag.Duration("vmware-timeout", 5*time.Minute, "Timeout of all VMware calls")
-
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
 		"CheckTaskPermissions":    CheckTaskPermissions,
@@ -62,14 +59,18 @@ type KubeClient interface {
 }
 
 type CheckContext struct {
-	Context     context.Context
-	VMConfig    *vsphere.VSphereConfig
-	VMClient    *vim25.Client
-	TagManager  *vapitags.Manager
-	Username    string
-	AuthManager AuthManager
-	KubeClient  KubeClient
-	ClusterInfo *util.ClusterInfo
+	Cache         cache.VSphereCache
+	Context       context.Context
+	VMConfig      *vsphere.VSphereConfig
+	GovmomiClient *govmomi.Client
+	VMClient      *vim25.Client
+	TagManager    *vapitags.Manager
+	Username      string
+	AuthManager   AuthManager
+	KubeClient    KubeClient
+	ClusterInfo   *util.ClusterInfo
+	//Infra            *ocpv1.Infrastructure
+	PlatformSpec *ocpv1.VSpherePlatformSpec
 }
 
 // Interface of a single vSphere cluster-level check. It gets connection to vSphere, vSphere config and connection to Kubernetes.
