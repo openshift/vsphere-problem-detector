@@ -147,13 +147,9 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 }
 
 func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	matchingDC, err := getDatacenter(ctx, dataCenterName)
 	if err != nil {
-		klog.Errorf("error getting datacenter %s: %v", ctx.VMConfig.Workspace.Datacenter, err)
+		klog.Errorf("error getting datacenter %s: %v", dataCenterName, err)
 		return err
 	}
 	if err := comparePrivileges(ctx.Context, ctx.Username, matchingDC.Reference(), ctx.AuthManager, permissions[permissionDatacenter]); err != nil {
@@ -163,10 +159,6 @@ func checkDatacenterPrivileges(ctx *CheckContext, dataCenterName string) error {
 }
 
 func checkFolderPrivileges(ctx *CheckContext, folderPath string, group permissionGroup) error {
-	if _, ok := ctx.VMConfig.VirtualCenter[ctx.VMConfig.Workspace.VCenterIP]; !ok {
-		return errors.New("vcenter instance not found in the virtual center map")
-	}
-
 	finder := find.NewFinder(ctx.VMClient)
 	folder, err := getFolderReference(ctx.Context, folderPath, finder)
 	if err != nil {

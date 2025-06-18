@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"sync"
 
 	"github.com/vmware/govmomi/vim25/methods"
@@ -11,6 +12,8 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CheckNodeDiskPerf Checks node performance of master nodes.
@@ -68,7 +71,7 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 		This:   *ctx.VMClient.ServiceContent.PerfManager,
 		Entity: vm.ManagedEntity.Reference(),
 	}
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfList, err := methods.QueryAvailablePerfMetric(tctx, ctx.VMClient.RoundTripper, &perf)
@@ -90,7 +93,7 @@ func (c *CheckNodeDiskPerf) BuildCounterIdMap(ctx *CheckContext, vm *mo.VirtualM
 		CounterId: counterIds,
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfCounters, err := methods.QueryPerfCounter(tctx, ctx.VMClient.RoundTripper, &perfCounter)
@@ -163,7 +166,7 @@ func (c *CheckNodeDiskPerf) PerformMetricCheck(ctx *CheckContext, node *v1.Node,
 		QuerySpec: metricsSpec,
 	}
 
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	perfQueryRes, err := methods.QueryPerf(tctx, ctx.VMClient.RoundTripper, &perfQueryReq)

@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/vmware/govmomi/vapi/rest"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 	"net/url"
@@ -143,6 +144,8 @@ func (c *vSphereChecker) connect(ctx context.Context) (*check.CheckContext, erro
 		VMClient:      vmClient.Client,
 		GovmomiClient: vmClient,
 		TagManager:    vapitags.NewManager(restClient),
+		// Each check run gets its own cache
+		Cache: cache.NewCheckCache(vmClient.Client),
 	}
 	return checkContext, nil
 }
@@ -289,7 +292,7 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 }
 
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
-	tctx, cancel := context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel := context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 
 	// Find datastore
@@ -302,7 +305,7 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 	// Find VM reference in the datastore, by UUID
 	s := object.NewSearchIndex(dc.Client())
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 	svm, err := s.FindByUuid(tctx, dc, vmUUID, true, nil)
 	if err != nil {
@@ -314,7 +317,7 @@ func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine,
 
 	// Find VM properties
 	vm := object.NewVirtualMachine(checkContext.VMClient, svm.Reference())
-	tctx, cancel = context.WithTimeout(checkContext.Context, *check.Timeout)
+	tctx, cancel = context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
 	var o mo.VirtualMachine
 	err = vm.Properties(tctx, vm.Reference(), check.NodeProperties, &o)
@@ -343,7 +346,7 @@ func newClient(ctx context.Context, cfg *vsphere.VSphereConfig, username, passwo
 
 	insecure := cfg.Global.InsecureFlag
 
-	tctx, cancel := context.WithTimeout(ctx, *check.Timeout)
+	tctx, cancel := context.WithTimeout(ctx, *util.Timeout)
 	defer cancel()
 	klog.V(4).Infof("Connecting to %s as %s, insecure %t", serverAddress, username, insecure)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/openshift/vsphere-problem-detector/pkg/cache"
 	"github.com/vmware/govmomi/vapi/rest"
 	vapitags "github.com/vmware/govmomi/vapi/tags"
 
@@ -109,6 +110,7 @@ func setupSimulator(kubeClient *fakeKubeClient, modelDir string) (ctx *CheckCont
 		VMClient:    client,
 		KubeClient:  kubeClient,
 		TagManager:  vapitags.NewManager(restClient),
+		Cache:       cache.NewCheckCache(client),
 		ClusterInfo: clusterInfo,
 	}
 
