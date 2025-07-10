@@ -7,6 +7,8 @@ import (
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CheckFolderPermissions tests that OCP has permissions to list volumes in
@@ -44,7 +46,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	klog.V(4).Infof("Listing datastore %s path %s", ds.Name(), path)
 	dsName := ds.Name()
 
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 
 	browser, err := ds.Browser(tctx)
@@ -55,7 +57,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 	spec := types.HostDatastoreBrowserSearchSpec{
 		MatchPattern: []string{"*"},
 	}
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	task, err := browser.SearchDatastore(tctx, ds.Path(path), &spec)
 	if err != nil {
@@ -71,7 +73,7 @@ func listDirectory(ctx *CheckContext, ds *object.Datastore, path string, tolerat
 		return nil
 	}
 
-	tctx, cancel = context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel = context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	info, err := task.WaitForResult(tctx, nil)
 	if err != nil {

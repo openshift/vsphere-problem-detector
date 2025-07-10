@@ -1,6 +1,15 @@
 package util
 
-import "sync"
+import (
+	"flag"
+	"sync"
+	"time"
+)
+
+var (
+	// Make the vSphere call timeout configurable.
+	Timeout = flag.Duration("vmware-timeout", 5*time.Minute, "Timeout of all VMware calls")
+)
 
 type ESXiVersionInfo struct {
 	Version    string

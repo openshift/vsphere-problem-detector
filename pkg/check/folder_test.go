@@ -3,6 +3,8 @@ package check
 import (
 	"testing"
 	"time"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 func TestCheckFolderPermissions(t *testing.T) {
@@ -17,7 +19,7 @@ func TestCheckFolderPermissions(t *testing.T) {
 	defer cleanup()
 
 	// Act
-	*Timeout = time.Second
+	*util.Timeout = time.Second
 	err = CheckFolderPermissions(ctx)
 
 	// Assert

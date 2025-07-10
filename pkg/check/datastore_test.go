@@ -43,7 +43,7 @@ var (
 		{
 			name:        "datastore which is part of a datastore cluster",
 			datastore:   "/DC0/datastore/DC0_POD0/LocalDS_2",
-			expectError: true,
+			expectError: false, // we only log a warning
 			dsType:      "OTHER",
 		},
 		{
@@ -68,6 +68,8 @@ func TestCheckDefaultDatastore(t *testing.T) {
 				nodes:          defaultNodes(),
 			}
 			ctx, cleanup, err := setupSimulator(kubeClient, defaultModel)
+			ctx.PlatformSpec.FailureDomains[0].Topology.Datastore = test.datastore
+
 			if err != nil {
 				t.Fatalf("setupSimulator failed: %s", err)
 			}
@@ -79,7 +81,6 @@ func TestCheckDefaultDatastore(t *testing.T) {
 			}
 			ctx.AuthManager = authManager
 
-			ctx.VMConfig.Workspace.DefaultDatastore = test.datastore
 			// Act
 			err = CheckDefaultDatastore(ctx)
 

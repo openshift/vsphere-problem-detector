@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift/vsphere-problem-detector/pkg/util"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/vsphere-problem-detector/pkg/util"
 )
 
 // CollectNodeESXiVersion emits metric with version of each ESXi host that runs at least a single VM with node.
@@ -56,7 +57,7 @@ func (c *CollectNodeESXiVersion) CheckNode(ctx *CheckContext, node *v1.Node, vm 
 
 	// Load the HostSystem properties
 	host := object.NewHostSystem(ctx.VMClient, *hostRef)
-	tctx, cancel := context.WithTimeout(ctx.Context, *Timeout)
+	tctx, cancel := context.WithTimeout(ctx.Context, *util.Timeout)
 	defer cancel()
 	var o mo.HostSystem
 
