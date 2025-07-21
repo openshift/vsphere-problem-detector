@@ -134,7 +134,7 @@ type Model struct {
 	// total number of inventory objects, set by Count()
 	total int
 
-	dirs []string
+	dir string
 }
 
 // ESX is the default Model for a standalone ESX instance
@@ -174,11 +174,16 @@ func VPX() *Model {
 	}
 }
 
+// Map returns the Model.Service.Context.Map
+func (m *Model) Map() *Registry {
+	return m.Service.Context.Map
+}
+
 // Count returns a Model with total number of each existing type
 func (m *Model) Count() Model {
 	count := Model{}
 
-	for ref, obj := range Map.objects {
+	for ref, obj := range m.Map().objects {
 		if _, ok := obj.(mo.Entity); !ok {
 			continue
 		}
@@ -269,7 +274,7 @@ var kinds = map[string]reflect.Type{
 	"VmwareDistributedVirtualSwitch":     reflect.TypeOf((*DistributedVirtualSwitch)(nil)).Elem(),
 }
 
-func loadObject(content types.ObjectContent) (mo.Reference, error) {
+func loadObject(ctx *Context, content types.ObjectContent) (mo.Reference, error) {
 	var obj mo.Reference
 	id := content.Obj
 
@@ -288,7 +293,7 @@ func loadObject(content types.ObjectContent) (mo.Reference, error) {
 	} else {
 		if len(content.PropSet) == 0 {
 			// via NewServiceInstance()
-			Map.setReference(obj, id)
+			ctx.Map.setReference(obj, id)
 		} else {
 			// via Model.Load()
 			dst := getManagedObject(obj).Addr().Interface().(mo.Reference)
@@ -299,7 +304,7 @@ func loadObject(content types.ObjectContent) (mo.Reference, error) {
 		}
 
 		if x, ok := obj.(interface{ init(*Registry) }); ok {
-			x.init(Map)
+			x.init(ctx.Map)
 		}
 	}
 
@@ -334,7 +339,7 @@ func (m *Model) resolveReferences(ctx *Context) error {
 			// object was loaded without its parent, attempt to foster with another parent
 			switch e.Parent.Type {
 			case "Folder":
-				folder := dc.folder(me)
+				folder := dc.folder(ctx, me)
 				e.Parent = &folder.Self
 				log.Printf("%s adopted %s", e.Parent, ref)
 				folderPutChild(ctx, folder, me)
@@ -348,7 +353,7 @@ func (m *Model) resolveReferences(ctx *Context) error {
 	return nil
 }
 
-func (m *Model) decode(path string, data interface{}) error {
+func (m *Model) decode(path string, data any) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -388,12 +393,10 @@ func (m *Model) loadMethod(obj mo.Reference, dir string) error {
 	return nil
 }
 
-// When simulator code needs to call other simulator code, it typically passes whatever
-// context is associated with the request it's servicing.
-// Model code isn't servicing a request, but still needs a context, so we spoof
-// one for the purposes of calling simulator code.
-// Test code also tends to do this.
-func SpoofContext() *Context {
+// NewContext initializes a Context with a NewRegistry
+func NewContext() *Context {
+	r := NewRegistry()
+
 	return &Context{
 		Context: context.Background(),
 		Session: &Session{
@@ -401,14 +404,15 @@ func SpoofContext() *Context {
 				Key: uuid.New().String(),
 			},
 			Registry: NewRegistry(),
+			Map:      r,
 		},
-		Map: Map,
+		Map: r,
 	}
 }
 
 // Load Model from the given directory, as created by the 'govc object.save' command.
 func (m *Model) Load(dir string) error {
-	ctx := SpoofContext()
+	ctx := NewContext()
 	var s *ServiceInstance
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -434,18 +438,15 @@ func (m *Model) Load(dir string) error {
 		if content.Obj == vim25.ServiceInstance {
 			s = new(ServiceInstance)
 			s.Self = content.Obj
-			Map = NewRegistry()
-			ctx.Map = Map
 			ctx.Map.Put(s)
 			return mo.LoadObjectContent([]types.ObjectContent{content}, &s.ServiceInstance)
 		}
 
 		if s == nil {
-			s = NewServiceInstance(ctx, m.ServiceContent, m.RootFolder)
-			ctx.Map = Map
+			ctx, s = NewServiceInstance(ctx, m.ServiceContent, m.RootFolder)
 		}
 
-		obj, err := loadObject(content)
+		obj, err := loadObject(ctx, content)
 		if err != nil {
 			return err
 		}
@@ -463,21 +464,23 @@ func (m *Model) Load(dir string) error {
 		return err
 	}
 
-	m.Service = New(s)
+	m.Service = New(ctx, s)
 
 	return m.resolveReferences(ctx)
 }
 
 // Create populates the Model with the given ModelConfig
 func (m *Model) Create() error {
-	ctx := SpoofContext()
+	ctx := NewContext()
 	m.Service = New(NewServiceInstance(ctx, m.ServiceContent, m.RootFolder))
-	ctx.Map = Map
+	if err := m.createRootTempDir(ctx.Map.OptionManager()); err != nil {
+		return err
+	}
 	return m.CreateInfrastructure(ctx)
 }
 
 func (m *Model) CreateInfrastructure(ctx *Context) error {
-	client := m.Service.client
+	client := m.Service.client()
 	root := object.NewRootFolder(client)
 
 	// After all hosts are created, this var is used to mount the host datastores.
@@ -818,12 +821,25 @@ func (m *Model) CreateInfrastructure(ctx *Context) error {
 	return nil
 }
 
-func (m *Model) createTempDir(dc string, name string) (string, error) {
-	dir, err := os.MkdirTemp("", fmt.Sprintf("govcsim-%s-%s-", dc, name))
-	if err == nil {
-		m.dirs = append(m.dirs, dir)
+func (m *Model) createRootTempDir(opt *OptionManager) error {
+	var err error
+
+	m.dir, err = os.MkdirTemp("", "govcsim-")
+	if err != nil {
+		return err
 	}
-	return dir, err
+
+	opt.Setting = append(opt.Setting, &types.OptionValue{
+		Key:   "vcsim.home",
+		Value: m.dir,
+	})
+
+	return nil
+}
+
+func (m *Model) createTempDir(name ...string) (string, error) {
+	p := path.Join(m.dir, strings.Join(name, "-"))
+	return p, os.Mkdir(p, 0700)
 }
 
 func (m *Model) createLocalDatastore(dc string, name string, hosts []*object.HostSystem) error {
@@ -850,24 +866,21 @@ func (m *Model) createLocalDatastore(dc string, name string, hosts []*object.Hos
 
 // Remove cleans up items created by the Model, such as local datastore directories
 func (m *Model) Remove() {
+	ctx := m.Service.Context
 	// Remove associated vm containers, if any
-	Map.m.Lock()
-	for _, obj := range Map.objects {
+	ctx.Map.m.Lock()
+	for _, obj := range ctx.Map.objects {
 		if vm, ok := obj.(*VirtualMachine); ok {
-			vm.svm.remove(SpoofContext())
+			vm.svm.remove(ctx)
 		}
 	}
-	Map.m.Unlock()
+	ctx.Map.m.Unlock()
 
-	for _, dir := range m.dirs {
-		_ = os.RemoveAll(dir)
-	}
+	_ = os.RemoveAll(m.dir)
 }
 
 // Run calls f with a Client connected to a simulator server instance, which is stopped after f returns.
 func (m *Model) Run(f func(context.Context, *vim25.Client) error) error {
-	ctx := context.Background()
-
 	defer m.Remove()
 
 	if m.Service == nil {
@@ -884,6 +897,7 @@ func (m *Model) Run(f func(context.Context, *vim25.Client) error) error {
 	s := m.Service.NewServer()
 	defer s.Close()
 
+	ctx := m.Service.Context
 	c, err := govmomi.NewClient(ctx, s.URL, true)
 	if err != nil {
 		return err
