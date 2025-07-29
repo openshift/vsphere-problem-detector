@@ -58,6 +58,28 @@ func TestCacheGetDatastore(t *testing.T) {
 }
 
 func TestCacheGetDatastoreByURL(t *testing.T) {
+	testSetup, cleanup, err := testlib.SetupSimulator(nil, testlib.DefaultModel)
+	if err != nil {
+		t.Fatalf("Failed to setup vSphere simulator: %s", err)
+	}
+	defer cleanup()
+
+	cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
+
+	// Populate the cache
+	dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
+	dsName := testSetup.VMConfig.LegacyConfig.Workspace.DefaultDatastore
+	ds, err := cache.GetDatastore(testSetup.Context, dcName, dsName)
+	assert.NoError(t, err)
+	assert.Equal(t, "LocalDS_0", ds.Name())
+
+	dsMO, err := cache.GetDatastoreMo(testSetup.Context, dcName, dsName)
+	assert.NoError(t, err)
+	assert.Equal(t, "LocalDS_0", ds.Name())
+
+	// Shut down the simulated server
+	defer cleanup()
+
 	tests := []struct {
 		name         string
 		dataStoreURL string
@@ -65,7 +87,7 @@ func TestCacheGetDatastoreByURL(t *testing.T) {
 	}{
 		{
 			name:         "when datastore exists",
-			dataStoreURL: "testdata/default/govcsim-DC0-LocalDS_3-206027153",
+			dataStoreURL: dsMO.Info.GetDatastoreInfo().Url,
 		},
 		{
 			name:         "when datastore doesnt exist",
@@ -77,24 +99,6 @@ func TestCacheGetDatastoreByURL(t *testing.T) {
 	for i := range tests {
 		test := tests[i]
 		t.Run(test.name, func(t *testing.T) {
-			testSetup, cleanup, err := testlib.SetupSimulator(nil, testlib.DefaultModel)
-			if err != nil {
-				t.Fatalf("Failed to setup vSphere simulator: %s", err)
-			}
-			defer cleanup()
-
-			cache := NewCheckCache(testSetup.VCenters["dc0"].VMClient)
-
-			// Populate the cache
-			dcName := testSetup.VMConfig.LegacyConfig.Workspace.Datacenter
-			dsName := testSetup.VMConfig.LegacyConfig.Workspace.DefaultDatastore
-			ds, err := cache.GetDatastore(testSetup.Context, dcName, dsName)
-			assert.NoError(t, err)
-			assert.Equal(t, "LocalDS_0", ds.Name())
-
-			// Shut down the simulated server
-			cleanup()
-
 			// Act: get cached datastore, not used in the prev. call, while the simulated vCenter is offline
 			mo, err := cache.GetDatastoreByURL(testSetup.Context, dcName, test.dataStoreURL)
 			if test.err != nil {
@@ -103,7 +107,7 @@ func TestCacheGetDatastoreByURL(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, "LocalDS_3", mo.Info.GetDatastoreInfo().Name)
+				assert.Equal(t, "LocalDS_0", mo.Info.GetDatastoreInfo().Name)
 			}
 		})
 	}

@@ -57,9 +57,15 @@ func TestCollectNodeESXiVersion(t *testing.T) {
 			ctx.MetricsCollector = collector
 
 			// Set esxi version of the only host.
-			err = testlib.CustomizeHostVersion(testlib.DefaultHostId, test.esxiVersion, test.esxiApiversion)
-			if err != nil {
-				t.Fatalf("Failed to customize host: %s", err)
+			if len(ctx.VCenters) == 0 {
+				t.Fatalf("No vCenters found")
+			}
+			for _, vCenter := range ctx.VCenters {
+				err = testlib.CustomizeHostVersion(vCenter.Model.Service.Context, testlib.DefaultHostId, test.esxiVersion, test.esxiApiversion)
+				if err != nil {
+					t.Fatalf("Failed to customize host: %s", err)
+				}
+				break // Only process the first vCenter
 			}
 
 			// Reset metrics from previous tests. Note: the tests can't run in parallel!

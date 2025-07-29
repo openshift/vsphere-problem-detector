@@ -97,13 +97,18 @@ func TestDatastoreByURL(t *testing.T) {
 		cloudConfig  string
 		infra        *ocpv1.Infrastructure
 		dataStoreURL string
+		datacenter   string
+		datastore    string
+		vcenter      string
 		expectError  bool
 	}{
 		{
-			name:         "with no failure-domain but with valid datastore url",
-			infra:        testlib.Infrastructure(),
-			dataStoreURL: "testdata/default/govcsim-DC0-LocalDS_3-206027153",
-			expectError:  false,
+			name:        "with no failure-domain but with valid datastore url",
+			infra:       testlib.Infrastructure(),
+			expectError: false,
+			datacenter:  "DC0",
+			datastore:   "LocalDS_3",
+			vcenter:     "dc0",
 		},
 		{
 			name:         "with no failure-domain defined but with not-valid datastore url",
@@ -112,10 +117,12 @@ func TestDatastoreByURL(t *testing.T) {
 			expectError:  true,
 		},
 		{
-			name:         "with single failure-domain and valid datastore url",
-			infra:        testlib.InfrastructureWithFailureDomain(),
-			dataStoreURL: "testdata/default/govcsim-DC0-LocalDS_3-206027153",
-			expectError:  false,
+			name:        "with single failure-domain and valid datastore url",
+			infra:       testlib.InfrastructureWithFailureDomain(),
+			expectError: false,
+			datacenter:  "DC0",
+			datastore:   "LocalDS_3",
+			vcenter:     "dc0",
 		},
 		{
 			name:         "with single failure-domain and not-valid datastore url",
@@ -135,8 +142,10 @@ func TestDatastoreByURL(t *testing.T) {
 					},
 				})
 			}),
-			dataStoreURL: "testdata/default/govcsim-DC0-LocalDS_3-206027153",
-			expectError:  false,
+			expectError: false,
+			datacenter:  "DC0",
+			datastore:   "LocalDS_3",
+			vcenter:     "dc0",
 		},
 		{
 			name: "with multiple failure-domain and none having valid datastore",
@@ -154,18 +163,22 @@ func TestDatastoreByURL(t *testing.T) {
 			expectError:  true,
 		},
 		{
-			name:         "with multiple vCenters and first having valid datastore url",
-			cloudConfig:  "simple_config.yaml",
-			infra:        testlib.InfrastructureWithMultiVCenters(),
-			dataStoreURL: "testdata/default/govcsim-DC0-LocalDS_3-206027153",
-			expectError:  false,
+			name:        "with multiple vCenters and first having valid datastore url",
+			cloudConfig: "simple_config.yaml",
+			infra:       testlib.InfrastructureWithMultiVCenters(),
+			expectError: false,
+			datacenter:  "DC0",
+			datastore:   "LocalDS_3",
+			vcenter:     "vcenter.test.openshift.com",
 		},
 		{
-			name:         "with multiple vCenters and second having valid datastore url",
-			cloudConfig:  "simple_config.yaml",
-			infra:        testlib.InfrastructureWithMultiVCenters(),
-			dataStoreURL: "testdata/default/govcsim-DC1-LocalDS_1-057538539",
-			expectError:  false,
+			name:        "with multiple vCenters and second having valid datastore url",
+			cloudConfig: "simple_config.yaml",
+			infra:       testlib.InfrastructureWithMultiVCenters(),
+			expectError: false,
+			datacenter:  "DC1",
+			datastore:   "LocalDS_1",
+			vcenter:     "vcenter2.test.openshift.com",
 		},
 		{
 			name:         "with multiple vCenters and none having valid datastore",
@@ -188,6 +201,14 @@ func TestDatastoreByURL(t *testing.T) {
 				t.Fatalf("unexpected error setting up simulator: %v", err)
 			}
 			defer cleanup()
+
+			if !test.expectError {
+				ds, err := ctx.VCenters[test.vcenter].Cache.GetDatastoreMo(ctx.Context, test.datacenter, test.datastore)
+				if err != nil {
+					t.Fatalf("unexpected error getting datastore: %v", err)
+				}
+				test.dataStoreURL = ds.Info.GetDatastoreInfo().Url
+			}
 
 			_, _, _, err = getDatastoreByURL(ctx, test.dataStoreURL)
 			if !test.expectError && err != nil {

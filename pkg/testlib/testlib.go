@@ -463,8 +463,8 @@ func SetHardwareVersion(vmClient *vim25.Client, node *v1.Node, hardwareVersion s
 	return err
 }
 
-func CustomizeHostVersion(hostSystemId string, version string, apiVersion string) error {
-	hsRef := simulator.Map.Get(types.ManagedObjectReference{
+func CustomizeHostVersion(ctx context.Context, hostSystemId string, version string, apiVersion string) error {
+	hsRef := simulator.Map(ctx).Get(types.ManagedObjectReference{
 		Type:  "HostSystem",
 		Value: hostSystemId,
 	})
