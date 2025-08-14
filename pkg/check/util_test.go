@@ -351,7 +351,7 @@ func TestGetVCenter(t *testing.T) {
 		{
 			name:        "platform spec with multiple failure domains unknown fd (ini)",
 			cloudConfig: "simple_config.ini",
-			infra:       testlib.InfrastructureWithFailureDomain(),
+			infra:       testlib.InfrastructureWithMultipleFailureDomain(),
 			node: func() *v1.Node {
 				node := testlib.DefaultNodes()[0]
 				node.Labels = make(map[string]string)
@@ -385,7 +385,7 @@ func TestGetVCenter(t *testing.T) {
 		{
 			name:        "platform spec with multiple failure domains unknown fd beta labels (ini)",
 			cloudConfig: "simple_config.ini",
-			infra:       testlib.InfrastructureWithFailureDomain(),
+			infra:       testlib.InfrastructureWithMultipleFailureDomain(),
 			node: func() *v1.Node {
 				node := testlib.DefaultNodes()[0]
 				node.Labels = make(map[string]string)
