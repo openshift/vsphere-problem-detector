@@ -141,7 +141,7 @@ func comparePrivileges(ctx context.Context, username string, mo types.ManagedObj
 		}
 	}
 	if missingPrivileges != "" {
-		return errors.Errorf(missingPrivileges)
+		return errors.Errorf("%s", missingPrivileges)
 	}
 	return nil
 }
