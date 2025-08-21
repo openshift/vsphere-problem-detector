@@ -270,7 +270,10 @@ func GetVCenter(checkContext *CheckContext, node *v1.Node) (*VCenter, error) {
 		}
 
 		// In older clusters, the region/zone will be blank on nodes and there will be no FD.
-		if len(region) > 0 && len(zone) > 0 {
+		// However, region/zone being set is not enough to start looking for FailureDomain:
+		// in case of single (auto-generated) FailureDomain, topology-awareness is not enabled
+		// and we must fall back to the second "if" clause below (OCPBUGS-59319).
+		if len(region) > 0 && len(zone) > 0 && len(checkContext.PlatformSpec.FailureDomains) > 1 {
 			klog.V(2).Infof("Checking for region %v zone %v", region, zone)
 			server := ""
 			// Get failure domain
