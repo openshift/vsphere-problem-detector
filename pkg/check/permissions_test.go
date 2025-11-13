@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/check/mock"
