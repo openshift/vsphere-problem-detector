@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	basemetrics "k8s.io/component-base/metrics"
 
