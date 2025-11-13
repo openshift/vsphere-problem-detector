@@ -17,6 +17,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vmware/govmomi v0.52.0
+	go.uber.org/mock v0.6.0
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
