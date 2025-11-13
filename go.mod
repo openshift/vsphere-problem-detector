@@ -7,7 +7,6 @@ toolchain go1.24.4
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
-	github.com/golang/mock v1.6.0
 	github.com/openshift/api v0.0.0-20250717162127-ba53b2ac17c1
 	github.com/openshift/build-machinery-go v0.0.0-20250530140348-dc5b2804eeee
 	github.com/openshift/client-go v0.0.0-20250710075018-396b36f983ee
@@ -17,6 +16,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/vmware/govmomi v0.51.0
+	go.uber.org/mock v0.6.0
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
