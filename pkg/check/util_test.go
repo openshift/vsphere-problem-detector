@@ -462,6 +462,61 @@ func TestGetVCenter(t *testing.T) {
 			}(),
 			server: "vcenter.test.openshift.com",
 		},
+		{
+			name:        "case insensitive: lowercase FD with uppercase node labels",
+			cloudConfig: "simple_config.ini",
+			infra:       testlib.InfrastructureWithMultipleFailureDomain(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "EAST"
+				node.Labels[v1.LabelTopologyZone] = "EAST-1A"
+				return node
+			}(),
+			server: "dc0",
+		},
+		{
+			name:        "case insensitive: uppercase FD with lowercase node labels",
+			cloudConfig: "simple_config.ini",
+			infra: func() *ocpv1.Infrastructure {
+				infra := testlib.InfrastructureWithMultipleFailureDomain()
+				// Change failure domain to uppercase
+				for i := range infra.Spec.PlatformSpec.VSphere.FailureDomains {
+					infra.Spec.PlatformSpec.VSphere.FailureDomains[i].Region = "WEST"
+					infra.Spec.PlatformSpec.VSphere.FailureDomains[i].Zone = "WEST-1A"
+				}
+				return infra
+			}(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "west"
+				node.Labels[v1.LabelTopologyZone] = "west-1a"
+				return node
+			}(),
+			server: "dc0",
+		},
+		{
+			name:        "case insensitive: mixed case FD with different case node labels",
+			cloudConfig: "simple_config.ini",
+			infra: func() *ocpv1.Infrastructure {
+				infra := testlib.InfrastructureWithMultipleFailureDomain()
+				// Change failure domain to mixed case
+				for i := range infra.Spec.PlatformSpec.VSphere.FailureDomains {
+					infra.Spec.PlatformSpec.VSphere.FailureDomains[i].Region = "WeSt"
+					infra.Spec.PlatformSpec.VSphere.FailureDomains[i].Zone = "WeSt-1a"
+				}
+				return infra
+			}(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "wEsT"
+				node.Labels[v1.LabelTopologyZone] = "wEsT-1A"
+				return node
+			}(),
+			server: "dc0",
+		},
 	}
 
 	for i := range tests {
