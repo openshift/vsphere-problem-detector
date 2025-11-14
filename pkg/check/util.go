@@ -328,7 +328,7 @@ func GetVCenter(checkContext *CheckContext, node *v1.Node) (*VCenter, error) {
 			server := ""
 			// Get failure domain
 			for _, fd := range checkContext.PlatformSpec.FailureDomains {
-				if fd.Region == region && fd.Zone == zone {
+				if strings.EqualFold(fd.Region, region) && strings.EqualFold(fd.Zone, zone) {
 					server = fd.Server
 					break
 				}
