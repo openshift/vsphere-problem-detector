@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/vmware/govmomi/vim25/mo"
 	v1 "k8s.io/api/core/v1"
@@ -33,6 +34,7 @@ func (c *CheckComputeClusterPermissions) checkComputeClusterPrivileges(ctx *Chec
 
 	if readOnly {
 		// Having read only privilege is implied if we don't trigger the error above.
+		klog.Infof("confirmed read-only permissions for %v", vm.Reference())
 		return nil
 	}
 
@@ -58,9 +60,24 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 	}
 
 	// If pre-existing resource pool was defined, only check cluster for read privilege
+	// Note: Older installs use legacy config.  Newer installs are using the yaml and this field is not in there, so we'll
+	// fall back to using infrastructure.
 	if ctx.VMConfig.LegacyConfig != nil && ctx.VMConfig.LegacyConfig.Workspace.ResourcePoolPath != "" {
+		klog.Info("Detected legacy config with custom ResourcePool")
 		readOnly = true
+	} else if ctx.PlatformSpec != nil {
+		region := node.Labels["topology.kubernetes.io/region"]
+		zone := node.Labels["topology.kubernetes.io/zone"]
+
+		for _, fd := range ctx.PlatformSpec.FailureDomains {
+			rp := fd.Topology.ResourcePool
+			if fd.Region == region && fd.Zone == zone && rp != "" && !strings.HasSuffix(rp, "/Resources") {
+				klog.Info("Detected failure domain with custom ResourcePool")
+				readOnly = true
+			}
+		}
 	}
+	klog.V(4).Infof("Is compute cluster read only? %v", readOnly)
 
 	err = c.checkComputeClusterPrivileges(ctx, vCenterInfo, vm, readOnly)
 	if err != nil {
