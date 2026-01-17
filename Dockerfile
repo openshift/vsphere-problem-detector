@@ -4,7 +4,7 @@ COPY . .
 ENV GO_PACKAGE github.com/openshift/vsphere-problem-detector
 RUN make
 
-FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.22:base-rhel9-minimal
 COPY --from=builder /go/src/github.com/openshift/vsphere-problem-detector/vsphere-problem-detector /usr/bin/
 ENTRYPOINT ["/usr/bin/vsphere-problem-detector"]
 LABEL io.openshift.release.operator=true
