@@ -145,8 +145,8 @@ func (c *ClusterInfo) MarkHostForProcessing(hostname string) (string, bool) {
 
 // SetCbtData Set a node as being enabled or disabled for CBT
 func (c *ClusterInfo) SetCbtData(enabled string) {
-	c.esxiVersionsLock.RLock()
-	defer c.esxiVersionsLock.RUnlock()
+	c.esxiVersionsLock.Lock()
+	defer c.esxiVersionsLock.Unlock()
 
 	c.cbtEnabled[enabled]++
 }
