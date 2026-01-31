@@ -19,7 +19,7 @@ func formatPath(rootObject string) string {
 	return fmt.Sprintf("%s/...", rootObject)
 }
 
-//go:generate mockgen -source=./permissions.go -destination=./mock/authmanager_generated.go -package=mock
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -source=./permissions.go -destination=./mock/authmanager_generated.go -package=mock
 
 // AuthManager defines an interface to an implementation of the AuthorizationManager to facilitate mocking
 type AuthManager interface {

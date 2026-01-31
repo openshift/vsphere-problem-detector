@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"go.uber.org/mock/gomock"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
