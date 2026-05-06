@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	ocpv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/session"
+	"go.uber.org/mock/gomock"
 	k8sv1 "k8s.io/api/core/v1"
 
 	"github.com/openshift/vsphere-problem-detector/pkg/testlib"

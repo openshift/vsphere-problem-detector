@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
-	github.com/golang/mock v1.6.0
 	github.com/openshift/api v0.0.0-20260325070019-86893981287e
 	github.com/openshift/build-machinery-go v0.0.0-20250530140348-dc5b2804eeee
 	github.com/openshift/client-go v0.0.0-20260320040014-4b5fc2cdad98
@@ -15,6 +14,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/vmware/govmomi v0.53.0
+	go.uber.org/mock v0.6.0
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/api v0.36.0-alpha.0
 	k8s.io/apimachinery v0.36.0-alpha.0
