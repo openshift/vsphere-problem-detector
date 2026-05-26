@@ -20,16 +20,17 @@ import (
 var (
 	// DefaultClusterChecks is the list of all checks.
 	DefaultClusterChecks map[string]ClusterCheck = map[string]ClusterCheck{
-		"CheckTaskPermissions":    CheckTaskPermissions,
-		"ClusterInfo":             CollectClusterInfo,
-		"CheckFolderPermissions":  CheckFolderPermissions,
-		"CheckDefaultDatastore":   CheckDefaultDatastore,
-		"CheckStorageClasses":     CheckStorageClasses,
-		"CountVolumeTypes":        CountPVTypes,
-		"CheckAccountPermissions": CheckAccountPermissions,
-		"CheckZoneTags":           CheckZoneTags,
-		"CheckHostGroups":         CheckHostGroups,
-		"CheckInfraConfig":        CheckInfraConfig,
+		"CheckTaskPermissions":       CheckTaskPermissions,
+		"ClusterInfo":                CollectClusterInfo,
+		"CheckFolderPermissions":     CheckFolderPermissions,
+		"CheckDefaultDatastore":      CheckDefaultDatastore,
+		"CheckStorageClasses":        CheckStorageClasses,
+		"CountVolumeTypes":           CountPVTypes,
+		"CheckAccountPermissions":    CheckAccountPermissions,
+		"CheckZoneTags":              CheckZoneTags,
+		"CheckHostGroups":            CheckHostGroups,
+		"CheckInfraConfig":           CheckInfraConfig,
+		"CheckDatacenterConsistency": CheckDatacenterConsistency,
 	}
 	DefaultNodeChecks []NodeCheck = []NodeCheck{
 		&CheckNodeDiskUUID{},
