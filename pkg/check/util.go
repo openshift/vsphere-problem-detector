@@ -319,11 +319,17 @@ func GetVCenter(checkContext *CheckContext, node *v1.Node) (*VCenter, error) {
 			zone = node.Labels[v1.LabelFailureDomainBetaZone]
 		}
 
-		// In older clusters, the region/zone will be blank on nodes and there will be no FD.
-		// However, region/zone being set is not enough to start looking for FailureDomain:
-		// in case of single (auto-generated) FailureDomain, topology-awareness is not enabled
-		// and we must fall back to the second "if" clause below (OCPBUGS-59319).
-		if len(region) > 0 && len(zone) > 0 && len(checkContext.PlatformSpec.FailureDomains) > 1 {
+		// If the node has region/zone labels, try to match them against a configured failure domain.
+		// We attempt this regardless of how many failure domains are defined: a cluster that previously
+		// had multiple FDs and was reduced to one still has correctly-labelled nodes that should be
+		// matched rather than silently falling back to "first FD".
+		//
+		// The guard of len(FailureDomains) > 1 was originally added (OCPBUGS-59319) to skip FD
+		// matching for clusters that have only the single auto-generated FD created by the OpenShift
+		// installer, where topology-awareness is not enabled and labels may be absent/meaningless.
+		// We preserve that intent by only skipping the match when labels are absent;
+		// if the labels are present we always attempt a match first and fall back only if no FD matches.
+		if len(region) > 0 && len(zone) > 0 {
 			klog.V(2).Infof("Checking for region %v zone %v", region, zone)
 			server := ""
 			// Get failure domain
@@ -334,33 +340,61 @@ func GetVCenter(checkContext *CheckContext, node *v1.Node) (*VCenter, error) {
 				}
 			}
 
-			// Maybe return error if server not found?
-			if server == "" {
-				return nil, fmt.Errorf("unable to determine vcenter for node %s", node.Name)
+			if server != "" {
+				vc := checkContext.VCenters[server]
+				if vc == nil {
+					return nil, fmt.Errorf("vCenter %v not found", server)
+				}
+				return vc, nil
 			}
 
-			return checkContext.VCenters[server], nil
-		} else {
-			// Node is not configured w/ FD labels.  Admin may not have updated control plane after migrating to
-			// multi vCenter config.
+			// Labels were present but no FD matched.  This can happen when the cluster has more
+			// than one vCenter and the node's labels don't correspond to any configured FD (e.g.
+			// the FD was removed).  Return an error so the caller knows the node is unresolvable
+			// rather than silently returning the wrong vCenter.
+			if len(checkContext.PlatformSpec.FailureDomains) > 1 {
+				return nil, fmt.Errorf("unable to determine vcenter for node %s: no failure domain matched region=%s zone=%s", node.Name, region, zone)
+			}
+
+			// Single FD cluster (or auto-generated FD): fall through to the first-FD fallback below
+			// so that the existing OCPBUGS-59319 behaviour is preserved.
+			klog.V(4).Infof("Node %s has region/zone labels but only one failure domain is configured; using it directly", node.Name)
+		}
+
+		// Node labels are absent, or we have exactly one FD and labels didn't match it (single-FD
+		// legacy cluster).  Fall back: return the first available vCenter/FD.
+		if len(region) == 0 || len(zone) == 0 {
+			// Node is not configured w/ FD labels.  Admin may not have updated control plane after
+			// migrating to multi-vCenter config.  If there are multiple failure domains we cannot
+			// safely guess which vCenter is correct, so return an error.  For a single-FD cluster
+			// the fallback to FDs[0] is unambiguous, so just warn.
+			if len(checkContext.PlatformSpec.FailureDomains) > 1 {
+				return nil, fmt.Errorf("failure domain labels missing from node %s when there are more than one failure domains configured", node.Name)
+			}
 			klog.Warningf("failure domain labels missing from node %s", node.Name)
-			if len(checkContext.PlatformSpec.FailureDomains) > 0 {
-				klog.V(2).Infof("Returning first FD defined in platform spec.")
-				for _, fd := range checkContext.PlatformSpec.FailureDomains {
-					return checkContext.VCenters[fd.Server], nil
-				}
-			} else {
-				klog.V(2).Infof("There are no failure domains in platform spec. Returning first vCenter from context.")
-				for index := range checkContext.VCenters {
-					return checkContext.VCenters[index], nil
-				}
+		}
+		if len(checkContext.PlatformSpec.FailureDomains) > 0 {
+			klog.V(2).Infof("Returning first FD defined in platform spec.")
+			fd := checkContext.PlatformSpec.FailureDomains[0]
+			vc := checkContext.VCenters[fd.Server]
+			if vc == nil {
+				return nil, fmt.Errorf("vCenter %v not found", fd.Server)
+			}
+			return vc, nil
+		} else {
+			klog.V(2).Infof("There are no failure domains in platform spec. Returning first vCenter from context.")
+			if len(checkContext.VCenters) > 1 {
+				return nil, fmt.Errorf("invalid number of configured vCenters detected: %d.  Expected only 1", len(checkContext.VCenters))
+			}
+			for index := range checkContext.VCenters {
+				return checkContext.VCenters[index], nil
 			}
 		}
 	} else {
 		// Platform spec is not set.  This is old behavior before FDs.  Return only FD.
 		klog.V(2).Infof("Infrastructure is not configured.  Returning first vCenter from context.")
 		if len(checkContext.VCenters) > 1 {
-			return nil, fmt.Errorf("invalid number of configured vCenters detected: %d.  Expected only 1.", len(checkContext.VCenters))
+			return nil, fmt.Errorf("invalid number of configured vCenters detected: %d.  Expected only 1", len(checkContext.VCenters))
 		}
 		for index := range checkContext.VCenters {
 			return checkContext.VCenters[index], nil
