@@ -66,14 +66,34 @@ func (c *CheckComputeClusterPermissions) CheckNode(ctx *CheckContext, node *v1.N
 		klog.Info("Detected legacy config with custom ResourcePool")
 		readOnly = true
 	} else if ctx.PlatformSpec != nil {
-		region := node.Labels["topology.kubernetes.io/region"]
-		zone := node.Labels["topology.kubernetes.io/zone"]
+		// Read region/zone labels, falling back to beta labels for older clusters
+		region := node.Labels[v1.LabelTopologyRegion]
+		if len(region) == 0 {
+			region = node.Labels[v1.LabelFailureDomainBetaRegion]
+		}
+		zone := node.Labels[v1.LabelTopologyZone]
+		if len(zone) == 0 {
+			zone = node.Labels[v1.LabelFailureDomainBetaZone]
+		}
 
-		for _, fd := range ctx.PlatformSpec.FailureDomains {
+		// Special case: if there's only one failure domain with a custom ResourcePool,
+		// assume it applies to all nodes (common in single-zone installs where region/zone labels may be fake)
+		if len(ctx.PlatformSpec.FailureDomains) == 1 {
+			fd := ctx.PlatformSpec.FailureDomains[0]
 			rp := fd.Topology.ResourcePool
-			if fd.Region == region && fd.Zone == zone && rp != "" && !strings.HasSuffix(rp, "/Resources") {
-				klog.Info("Detected failure domain with custom ResourcePool")
+			if rp != "" && !strings.HasSuffix(rp, "/Resources") {
+				klog.Info("Detected single failure domain with custom ResourcePool")
 				readOnly = true
+			}
+		} else {
+			// Multiple failure domains: match by region/zone labels
+			for _, fd := range ctx.PlatformSpec.FailureDomains {
+				rp := fd.Topology.ResourcePool
+				if fd.Region == region && fd.Zone == zone && rp != "" && !strings.HasSuffix(rp, "/Resources") {
+					klog.Info("Detected failure domain with custom ResourcePool")
+					readOnly = true
+					break
+				}
 			}
 		}
 	}
