@@ -357,7 +357,7 @@ func (c *vSphereProblemDetectorController) runChecks(ctx context.Context, cluste
 func (c *vSphereProblemDetectorController) reportResults(results []checkResult) {
 	for _, res := range results {
 		if res.Error != nil {
-			c.eventRecorder.Warningf("FailedVSphere"+res.Name, res.Error.Error())
+			c.eventRecorder.Warningf("FailedVSphere"+res.Name, "%s", res.Error.Error())
 		} else {
 			c.eventRecorder.Eventf("SucceededVSphere"+res.Name, "Check succeeded")
 		}
