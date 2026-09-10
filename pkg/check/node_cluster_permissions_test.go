@@ -358,8 +358,16 @@ func TestCheckComputeClusterPermissions_MultipleFailureDomains_RequiresLabelMatc
 		t.Fatalf("StartCheck failed: %v", err)
 	}
 
-	// Node without region/zone labels
-	node := testlib.Node("DC0_H0_VM0")
+	// Node with GA region/zone labels matching the first failure domain (region=east, zone=east-1a).
+	// Labels are required: GetVCenter returns an error when multiple FDs are configured and the
+	// node carries no labels, because it cannot safely determine which vCenter to use.
+	node := testlib.Node("DC0_H0_VM0", func(n *k8sv1.Node) {
+		if n.Labels == nil {
+			n.Labels = map[string]string{}
+		}
+		n.Labels[k8sv1.LabelTopologyRegion] = "east"
+		n.Labels[k8sv1.LabelTopologyZone] = "east-1a"
+	})
 
 	infra := testlib.InfrastructureWithMultipleFailureDomain(func(inf *ocpv1.Infrastructure) {
 		// Set custom ResourcePool on first failure domain
