@@ -453,6 +453,8 @@ func TestGetVCenter(t *testing.T) {
 			expectErr: "unable to determine vcenter for node DC0_H0_VM0",
 		},
 		{
+			// Node has no region/zone labels and there are 2 FDs pointing to different vCenters.
+			// We cannot safely determine which vCenter to use, so an error is expected.
 			name:        "platform spec with multiple vcenters no labels",
 			cloudConfig: "simple_config.yaml",
 			infra:       testlib.InfrastructureWithMultiVCenters(),
@@ -460,7 +462,93 @@ func TestGetVCenter(t *testing.T) {
 				node := testlib.DefaultNodes()[0]
 				return node
 			}(),
+			expectErr: "failure domain labels missing from node DC0_H0_VM0 when there are more than one failure domains configured",
+		},
+		// ── Scenarios exercising the fix for the "FD reduced from 2→1" regression ──────────────
+		{
+			// Node labels (GA) match the one configured FD (region=east, zone=east-1a).
+			// Expect: matched directly, no fallback, no warning.
+			name:        "single FD after reduction - GA labels match remaining FD (ini)",
+			cloudConfig: "simple_config.ini",
+			infra:       testlib.InfrastructureWithFailureDomain(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "east"
+				node.Labels[v1.LabelTopologyZone] = "east-1a"
+				return node
+			}(),
+			server: "dc0",
+		},
+		{
+			// Same as above but with the legacy beta topology labels.
+			name:        "single FD after reduction - beta labels match remaining FD (ini)",
+			cloudConfig: "simple_config.ini",
+			infra:       testlib.InfrastructureWithFailureDomain(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelFailureDomainBetaRegion] = "east"
+				node.Labels[v1.LabelFailureDomainBetaZone] = "east-1a"
+				return node
+			}(),
+			server: "dc0",
+		},
+		{
+			// YAML cloud-config flavour: single FD after reduction, GA labels match.
+			name:        "single FD after reduction - GA labels match remaining FD (yaml)",
+			cloudConfig: "config_single-vcenter.yaml",
+			infra: func() *ocpv1.Infrastructure {
+				// Start from the multi-vCenter infra (which has two FDs), then
+				// strip it down to one FD + one vCenter, simulating a customer
+				// who removed the second failure domain.
+				infra := testlib.InfrastructureWithMultiVCenters()
+				infra.Spec.PlatformSpec.VSphere.FailureDomains = infra.Spec.PlatformSpec.VSphere.FailureDomains[0:1]
+				infra.Spec.PlatformSpec.VSphere.VCenters = infra.Spec.PlatformSpec.VSphere.VCenters[0:1]
+				return infra
+			}(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				// The first FD in InfrastructureWithMultiVCenters has region=east, zone=east-1a.
+				node.Labels[v1.LabelTopologyRegion] = "east"
+				node.Labels[v1.LabelTopologyZone] = "east-1a"
+				return node
+			}(),
 			server: "vcenter.test.openshift.com",
+		},
+		{
+			// Node labels are present but do NOT match the single remaining FD.
+			// With only 1 FD the new code falls through to the first-FD fallback
+			// (OCPBUGS-59319 behaviour preserved) rather than returning an error.
+			name:        "single FD after reduction - labels present but don't match (falls back to first FD)",
+			cloudConfig: "simple_config.ini",
+			infra:       testlib.InfrastructureWithFailureDomain(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "unknown-region"
+				node.Labels[v1.LabelTopologyZone] = "unknown-zone"
+				return node
+			}(),
+			// No error: falls back to the single FD's vCenter (same as legacy behaviour).
+			server: "dc0",
+		},
+		{
+			// Multi-vCenter cluster: node labels are present but match no configured FD.
+			// With >1 FDs the new code must return a hard error instead of silently
+			// returning the wrong vCenter.
+			name:        "multiple FDs - labels present but match no FD returns error (ini)",
+			cloudConfig: "simple_config.ini",
+			infra:       testlib.InfrastructureWithMultipleFailureDomain(),
+			node: func() *v1.Node {
+				node := testlib.DefaultNodes()[0]
+				node.Labels = make(map[string]string)
+				node.Labels[v1.LabelTopologyRegion] = "removed-region"
+				node.Labels[v1.LabelTopologyZone] = "removed-zone"
+				return node
+			}(),
+			expectErr: "unable to determine vcenter for node DC0_H0_VM0",
 		},
 	}
 
