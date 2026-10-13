@@ -1,0 +1,14 @@
+global:
+  insecureFlag: true
+  secretName: vsphere-creds
+  secretNamespace: kube-system
+vcenter:
+  vcenter.test.openshift.com:
+    server: vcenter.test.openshift.com
+    port: 443
+    insecureFlag: true
+    datacenters:
+      - cidatacenter
+labels:
+  zone: openshift-zone
+  region: openshift-region
