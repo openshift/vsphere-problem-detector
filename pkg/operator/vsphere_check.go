@@ -254,11 +254,33 @@ func (c *vSphereChecker) enqueueNodeChecks(checkContext *check.CheckContext, che
 		nodeCheck.StartCheck()
 	}
 
+	skippedNodes := 0
 	for i := range nodes {
 		node := nodes[i]
+		// Run node checks only on nodes that are vSphere VMs. Other nodes
+		// (e.g. bare metal compute nodes added to a mixed vSphere + bare
+		// metal cluster) don't have a VM in vCenter, checking them would
+		// only produce false failures.
+		if !isVSphereNode(node) {
+			skippedNodes++
+			klog.V(4).Infof("Skipping node %s: not a vSphere VM (providerID %q)", node.Name, node.Spec.ProviderID)
+			continue
+		}
 		c.enqueueSingleNodeChecks(checkContext, checkRunner, resultCollector, node)
 	}
+	if skippedNodes > 0 {
+		klog.V(2).Infof("Skipped %d node(s) that are not vSphere VMs (no vsphere:// providerID)", skippedNodes)
+	}
 	return nil
+}
+
+// isVSphereNode returns true when the node is a vSphere VM, i.e. when the
+// vSphere cloud provider initialized the node and set its provider ID to
+// "vsphere://<VM UUID>". Nodes running on other platforms (e.g. bare metal
+// compute nodes in a mixed vSphere + bare metal cluster) don't have this
+// prefix and their VMs cannot be found in vCenter.
+func isVSphereNode(node *v1.Node) bool {
+	return strings.HasPrefix(node.Spec.ProviderID, "vsphere://")
 }
 
 func (c *vSphereChecker) enqueueSingleNodeChecks(checkContext *check.CheckContext, checkRunner *CheckThreadPool, resultCollector *ResultCollector, node *v1.Node) {
@@ -334,6 +356,10 @@ func (c *vSphereChecker) finishNodeChecks(ctx *check.CheckContext) {
 func getVM(checkContext *check.CheckContext, node *v1.Node) (*mo.VirtualMachine, error) {
 	tctx, cancel := context.WithTimeout(checkContext.Context, *util.Timeout)
 	defer cancel()
+
+	if !isVSphereNode(node) {
+		return nil, fmt.Errorf("node %s is not a vSphere VM (providerID %q)", node.Name, node.Spec.ProviderID)
+	}
 
 	vmUUID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(node.Spec.ProviderID, "vsphere://")))
 	if vmUUID == "" {
